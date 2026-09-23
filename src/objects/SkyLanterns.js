@@ -24,17 +24,24 @@ const FESTIVAL_BLESSINGS = [
 ];
 
 export class SkyLanterns {
-  constructor(scene) {
+  constructor(scene, perf = {}) {
     this.scene = scene;
     this.group = new THREE.Group();
     this.lanterns = [];
     this.wishLanterns = [];
     this.time = 0;
+    this.wishLanternLights = perf.wishLanternLights !== false;
+    this.wishSparkTrail = perf.wishSparkTrail !== false;
+    this._interactiveMeshes = null;
 
     this.createGeometriesAndMaterials();
-    this.spawnBackgroundLanterns(60);
+    this.spawnBackgroundLanterns(perf.skyLanternCount ?? 50);
 
     this.scene.add(this.group);
+  }
+
+  invalidateInteractiveCache() {
+    this._interactiveMeshes = null;
   }
 
   createGeometriesAndMaterials() {
@@ -136,7 +143,7 @@ export class SkyLanterns {
         roughness: 0.25,
         metalness: 0.1,
         emissive: new THREE.Color(0xffaa22),
-        emissiveIntensity: 1.15,
+        emissiveIntensity: this.wishLanternLights ? 1.15 : 1.45,
         side: THREE.DoubleSide
       });
     }
@@ -167,14 +174,13 @@ export class SkyLanterns {
     flame.position.y = 0.45;
     meshGroup.add(flame);
 
-    // Point Light
-    const light = new THREE.PointLight(
-      isWish ? 0xffc107 : 0xff9422,
-      isWish ? 3.0 : 1.8,
-      isWish ? 26 : 16
-    );
-    light.position.y = 0.5;
-    meshGroup.add(light);
+    // Point lights on dozens of lanterns destroy GPU perf — emissive flame is enough for background
+    let light = null;
+    if (isWish && this.wishLanternLights) {
+      light = new THREE.PointLight(0xffc107, 2.2, 18);
+      light.position.y = 0.5;
+      meshGroup.add(light);
+    }
 
     // ⭐ SPECIAL VISUAL EFFECT FOR WISH LANTERNS:
     // 1. Pulsing Golden Celestial Halo Ring around the waist
@@ -189,6 +195,7 @@ export class SkyLanterns {
       meshGroup.add(halo);
 
       // 2. Sparkling cascading golden stardust trail
+      if (this.wishSparkTrail) {
       const sparkCount = 28;
       sparkGeo = new THREE.BufferGeometry();
       sparkPositions = new Float32Array(sparkCount * 3);
@@ -207,6 +214,7 @@ export class SkyLanterns {
       });
       sparkTrail = new THREE.Points(sparkGeo, sparkMat);
       meshGroup.add(sparkTrail);
+      }
     }
 
     return {
@@ -302,6 +310,7 @@ export class SkyLanterns {
 
     this.wishLanterns.push(lantern);
     this.group.add(lantern.mesh);
+    this.invalidateInteractiveCache();
 
     audioManager.playLanternRelease();
 
@@ -334,15 +343,20 @@ export class SkyLanterns {
 
     this.wishLanterns.push(lantern);
     this.group.add(lantern.mesh);
+    this.invalidateInteractiveCache();
   }
 
   /**
    * Returns all clickable meshes for raycaster click detection
    */
   getInteractiveMeshes() {
+    if (this._interactiveMeshes) {
+      return this._interactiveMeshes;
+    }
     const list = [];
     this.lanterns.forEach(l => list.push(l.paperMesh));
     this.wishLanterns.forEach(l => list.push(l.paperMesh));
+    this._interactiveMeshes = list;
     return list;
   }
 

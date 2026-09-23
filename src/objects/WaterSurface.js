@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 
 export class WaterSurface {
-  constructor(scene, level = -12) {
+  constructor(scene, level = -12, perf = {}) {
     this.scene = scene;
     this.level = level;
     this.group = new THREE.Group();
@@ -14,7 +14,7 @@ export class WaterSurface {
     this.time = 0;
 
     this.createWaterMesh();
-    this.createFloatingLotusLanterns(16);
+    this.createFloatingLotusLanterns(perf.lotusCount ?? 14);
 
     this.group.position.y = level;
     this.scene.add(this.group);
@@ -84,9 +84,7 @@ export class WaterSurface {
       flame.position.y = 0.65;
       lotusGroup.add(flame);
 
-      const light = new THREE.PointLight(0xff9922, 0.8, 6);
-      light.position.y = 0.7;
-      lotusGroup.add(light);
+      // Emissive flame only — avoid 16 extra point lights on the water
 
       // Random position on water in front of camera
       const posX = (Math.random() - 0.5) * 80;
@@ -100,8 +98,7 @@ export class WaterSurface {
         group: lotusGroup,
         baseX: posX,
         baseZ: posZ,
-        phase: Math.random() * Math.PI * 2,
-        light
+        phase: Math.random() * Math.PI * 2
       });
 
       this.group.add(lotusGroup);
@@ -117,10 +114,6 @@ export class WaterSurface {
       lotus.group.position.y = 0.05 + Math.sin(this.time * 1.8 + lotus.phase) * 0.08;
       lotus.group.rotation.y += delta * 0.08;
       lotus.group.position.x = lotus.baseX + Math.sin(this.time * 0.5 + lotus.phase) * 1.2;
-
-      if (lotus.light) {
-        lotus.light.intensity = 0.7 + Math.sin(this.time * 12 + lotus.phase) * 0.2;
-      }
     });
   }
 }

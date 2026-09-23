@@ -15,11 +15,13 @@ import { SkyLanterns } from '../objects/SkyLanterns.js';
 import { WaterSurface } from '../objects/WaterSurface.js';
 import { ParticleSky } from '../objects/ParticleSky.js';
 import { googleSheetService } from '../services/GoogleSheetService.js';
+import { getPerformanceProfile, getPixelRatio } from '../utils/performance.js';
 
 export class SceneManager {
   constructor(canvasElement) {
     this.canvas = canvasElement;
     this.clock = new THREE.Clock();
+    this.perf = getPerformanceProfile();
 
     this.onLanternClickCallback = null;
 
@@ -38,19 +40,19 @@ export class SceneManager {
   initRenderer() {
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: true,
+      antialias: this.perf.antialias,
       powerPreference: 'high-performance',
       preserveDrawingBuffer: true // Required for Postcard snapshot export
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(getPixelRatio());
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     window.addEventListener('resize', () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      this.renderer.setPixelRatio(getPixelRatio());
     });
   }
 
@@ -90,32 +92,42 @@ export class SceneManager {
     this.jadeRabbit = new JadeRabbit(this.scene, new THREE.Vector3(0, 21, -35));
 
     // 5. Sea of Floating Sky Lanterns with wish & blessing system
-    this.skyLanterns = new SkyLanterns(this.scene);
+    this.skyLanterns = new SkyLanterns(this.scene, this.perf);
 
     // 6. Calm reflective water surface with lotus flower lanterns
-    this.waterSurface = new WaterSurface(this.scene, -11);
+    this.waterSurface = new WaterSurface(this.scene, -11, this.perf);
 
     // 7. Twinkling stars, fireflies, fireworks
-    this.particleSky = new ParticleSky(this.scene);
+    this.particleSky = new ParticleSky(this.scene, this.perf);
   }
 
   initRaycaster() {
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     let pointerDownPos = { x: 0, y: 0 };
+    let lastHoverRaycast = 0;
+
+    const getMeshes = () => {
+      return this.skyLanterns.getInteractiveMeshes();
+    };
 
     this.canvas.addEventListener('pointerdown', (e) => {
       pointerDownPos = { x: e.clientX, y: e.clientY };
     });
 
     this.canvas.addEventListener('pointermove', (e) => {
+      const now = performance.now();
+      if (now - lastHoverRaycast < this.perf.raycastHoverMs) {
+        return;
+      }
+      lastHoverRaycast = now;
+
       this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
-      // Check hover
       this.raycaster.setFromCamera(this.mouse, this.cameraManager.camera);
-      const meshes = this.skyLanterns.getInteractiveMeshes();
-      const intersects = this.raycaster.intersectObjects(meshes);
+      const meshes = getMeshes();
+      const intersects = this.raycaster.intersectObjects(meshes, false);
 
       if (intersects.length > 0) {
         this.canvas.style.cursor = 'pointer';
@@ -133,8 +145,8 @@ export class SceneManager {
       this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
       this.raycaster.setFromCamera(this.mouse, this.cameraManager.camera);
-      const meshes = this.skyLanterns.getInteractiveMeshes();
-      const intersects = this.raycaster.intersectObjects(meshes);
+      const meshes = getMeshes();
+      const intersects = this.raycaster.intersectObjects(meshes, false);
 
       if (intersects.length > 0) {
         const hit = intersects[0];
@@ -204,6 +216,11 @@ export class SceneManager {
 
   animate() {
     requestAnimationFrame(this.animate);
+
+    if (document.hidden) {
+      this.clock.getDelta();
+      return;
+    }
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
 

@@ -8,13 +8,13 @@ import * as THREE from 'three';
 import { audioManager } from '../audio/AudioManager.js';
 
 export class ParticleSky {
-  constructor(scene) {
+  constructor(scene, perf = {}) {
     this.scene = scene;
     this.group = new THREE.Group();
     this.time = 0;
 
-    this.createStarfield(2400);
-    this.createFireflies(45);
+    this.createStarfield(perf.starCount ?? 2200);
+    this.createFireflies(perf.fireflyCount ?? 40);
     this.initFireworks();
 
     this.scene.add(this.group);

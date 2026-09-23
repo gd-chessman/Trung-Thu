@@ -13,7 +13,7 @@
   <!-- Loading Screen -->
   <div id="loading-screen" class="loading-screen">
     <div class="loading-lantern">🏮</div>
-    <h2>ĐÊM HỘI TRĂNG RẰM</h2>
+    <h2><span class="letter-vi">Đ</span>ÊM HỘI TRĂNG RẰM</h2>
     <div class="loading-bar-wrap">
       <div class="loading-bar" style="width: 100%;"></div>
     </div>
@@ -97,7 +97,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <div>
-          <h2><span>🏮</span> Thả Đèn Trời Cầu Nguyện</h2>
+          <h2><span class="modal-title-emoji">🏮</span><span class="modal-title-text">Thả <span class="letter-vi">Đ</span>èn Trời Cầu Nguyện</span></h2>
           <p>Gửi gắm ước nguyện bình an, may mắn lên vầng trăng rằm</p>
         </div>
         <button id="btn-close-wish" class="btn-close" aria-label="Đóng">&times;</button>
@@ -155,19 +155,20 @@
 
   <!-- Modal 3: Sự Tích & Đố Vui Trung Thu -->
   <div id="trivia-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-card" style="max-width: 620px;">
+    <div class="modal-card modal-card--framed" style="max-width: 620px;">
       <div class="modal-header">
         <div>
-          <h2><span>📜</span> Sự Tích & Đố Vui Trung Thu</h2>
+          <h2><span class="modal-title-emoji">📜</span><span class="modal-title-text">Sự Tích & <span class="letter-vi">Đ</span>ố Vui Trung Thu</span></h2>
           <p>Khám phá nét đẹp văn hóa dân gian Tết Đoàn Viên</p>
         </div>
         <button id="btn-close-trivia" class="btn-close" aria-label="Đóng">&times;</button>
       </div>
 
+      <div class="modal-card-scroll">
       <!-- Tabs Header -->
       <div class="tabs-header">
         <button id="tab-btn-stories" class="tab-btn active">📖 Sự Tích Dân Gian</button>
-        <button id="tab-btn-quiz" class="tab-btn">🎯 Đố Vui Đêm Rằm</button>
+        <button id="tab-btn-quiz" class="tab-btn">🎯 <span class="tab-label"><span class="letter-vi">Đ</span>ố Vui <span class="letter-vi">Đ</span>êm Rằm</span></button>
       </div>
 
       <!-- Tab Content: Stories -->
@@ -191,6 +192,7 @@
       <!-- Tab Content: Quiz -->
       <div id="content-quiz" class="tab-content">
         <div id="quiz-list"></div>
+      </div>
       </div>
     </div>
   </div>

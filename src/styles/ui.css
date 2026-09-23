@@ -244,6 +244,25 @@
   overflow-y: auto;
 }
 
+.modal-card--framed {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-card--framed .modal-header {
+  flex-shrink: 0;
+}
+
+.modal-card-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
+
 .modal-overlay.active .modal-card {
   transform: translateY(0) scale(1);
 }
@@ -252,20 +271,21 @@
 .modal-card::before, .modal-card::after {
   content: '';
   position: absolute;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-color: var(--gold-light);
   pointer-events: none;
+  z-index: 3;
 }
 .modal-card::before {
-  top: 10px;
-  left: 10px;
+  top: 12px;
+  left: 12px;
   border-top: 2px solid var(--gold-warm);
   border-left: 2px solid var(--gold-warm);
 }
 .modal-card::after {
-  bottom: 10px;
-  right: 10px;
+  bottom: 12px;
+  right: 12px;
   border-bottom: 2px solid var(--gold-warm);
   border-right: 2px solid var(--gold-warm);
 }
@@ -284,6 +304,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.modal-header h2 .letter-vi {
+  font-weight: 700;
+  color: var(--gold-light);
+  -webkit-text-fill-color: var(--gold-light);
 }
 
 .modal-header p {
@@ -456,6 +482,10 @@
   border-bottom: 2px solid transparent;
 }
 
+.tab-btn .letter-vi {
+  font-weight: 600;
+}
+
 .tab-btn.active {
   color: var(--gold-light);
   border-bottom-color: var(--gold-warm);
@@ -597,13 +627,34 @@
   animation: lanternGlowPulse 2s ease-in-out infinite;
 }
 
+/* Cinzel thiếu glyph Đ — dùng Playfair cho riêng ký tự bọc .letter-vi */
+.letter-vi {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-style: normal;
+  letter-spacing: 0;
+  margin-right: 0.04em;
+  display: inline;
+}
+
+.modal-header h2 .modal-title-emoji {
+  flex-shrink: 0;
+}
+
+.modal-header h2 .modal-title-text {
+  line-height: 1.35;
+}
+
 .loading-screen h2 {
   font-family: var(--font-cinzel);
   font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 2px;
   background: linear-gradient(135deg, #fff 0%, var(--gold-light) 60%, var(--gold-warm) 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
-  letter-spacing: 2px;
+  color: transparent;
 }
 
 .loading-bar-wrap {

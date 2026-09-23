@@ -37,6 +37,15 @@ export class WishModal {
     this.textInput.addEventListener('input', () => this.updatePreview());
     this.authorInput.addEventListener('input', () => this.updatePreview());
 
+    const onEnterSubmit = (e) => {
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      if (!this.overlay.classList.contains('active')) return;
+      e.preventDefault();
+      this.submitWish();
+    };
+    this.authorInput.addEventListener('keydown', onEnterSubmit);
+    this.textInput.addEventListener('keydown', onEnterSubmit);
+
     // Submit Wish & Release Lantern
     this.submitBtn.addEventListener('click', () => this.submitWish());
 
@@ -64,13 +73,13 @@ export class WishModal {
     this.overlay.classList.remove('active');
   }
 
-  async submitWish() {
+  submitWish() {
     const text = this.textInput.value.trim() || 'Gia đình bình an, vạn sự như ý';
     const author = this.authorInput.value.trim() || 'Bạn';
 
-    await this.sceneManager.releaseWish(author, text);
+    this.close();
+    this.sceneManager.releaseWish(author, text);
 
-    // Confetti effect
     confetti({
       particleCount: 65,
       spread: 75,
@@ -78,10 +87,6 @@ export class WishModal {
       colors: ['#f5c518', '#b81414', '#ffffff', '#ff8c19']
     });
 
-    // Close modal
-    this.close();
-
-    // Show toast message
     if (this.showToast) {
       this.showToast('🏮 Đèn lồng nguyện ước đã bay lên bầu trăng rằm!', 5000);
     }

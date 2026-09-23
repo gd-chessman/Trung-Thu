@@ -180,8 +180,7 @@ export class SceneManager {
   /**
    * Release an interactive wish lantern & save to Google Sheet
    */
-  async releaseWish(author, wishText) {
-    // 1. Determine spawn point slightly in front of the current camera
+  releaseWish(author, wishText) {
     const cam = this.cameraManager.camera;
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const spawnPos = cam.position.clone().add(forward.multiplyScalar(7));
@@ -189,14 +188,11 @@ export class SceneManager {
 
     const lantern = this.skyLanterns.releaseWishLantern(author, wishText, spawnPos);
 
-    let saveResult = null;
-    try {
-      saveResult = await googleSheetService.saveWish(author, wishText);
-    } catch (e) {
-      console.warn('Could not save to sheet:', e);
-    }
+    googleSheetService.saveWish(author, wishText).catch((e) => {
+      console.warn('Could not save wish:', e);
+    });
 
-    return { lantern, saveResult };
+    return lantern;
   }
 
   /**

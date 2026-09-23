@@ -58,36 +58,54 @@
       <!-- Camera View Switcher -->
       <nav class="dock-camera-bar" aria-label="Góc nhìn 3D">
         <button class="cam-btn active" data-view="overview">
-          <span>🌌</span> Toàn Cảnh
+          <span class="cam-btn-icon" aria-hidden="true">🌌</span>
+          <span class="cam-btn-label cam-label-long">Toàn Cảnh</span>
+          <span class="cam-btn-label cam-label-short">Toàn Cảnh</span>
         </button>
         <button class="cam-btn" data-view="starlantern">
-          <span>⭐</span> Đèn Ông Sao
+          <span class="cam-btn-icon" aria-hidden="true">⭐</span>
+          <span class="cam-btn-label cam-label-long">Đèn Ông Sao</span>
+          <span class="cam-btn-label cam-label-short">Đèn Sao</span>
         </button>
         <button class="cam-btn" data-view="mooncake">
-          <span>🥮</span> Bánh Trung Thu
+          <span class="cam-btn-icon" aria-hidden="true">🥮</span>
+          <span class="cam-btn-label cam-label-long">Bánh Trung Thu</span>
+          <span class="cam-btn-label cam-label-short">Bánh TT</span>
         </button>
         <button class="cam-btn" data-view="rabbit">
-          <span>🐰</span> Thỏ Ngọc Cung Trăng
+          <span class="cam-btn-icon" aria-hidden="true">🐰</span>
+          <span class="cam-btn-label cam-label-long">Thỏ Ngọc Cung Trăng</span>
+          <span class="cam-btn-label cam-label-short">Thỏ Ngọc</span>
         </button>
       </nav>
 
       <!-- Action Buttons Bar -->
       <div class="dock-action-bar">
         <button id="btn-action-wish" class="btn-primary-wish">
-          <span>🏮</span> Thả Đèn Trời Cầu Nguyện
+          <span class="btn-icon" aria-hidden="true">🏮</span>
+          <span class="btn-label-full">Thả Đèn Trời Cầu Nguyện</span>
+          <span class="btn-label-short">Thả Đèn Cầu Nguyện</span>
         </button>
 
+        <div class="dock-action-grid">
         <button id="btn-action-firework" class="btn-secondary">
-          <span>🎆</span> Bắn Pháo Hoa
+          <span class="btn-icon" aria-hidden="true">🎆</span>
+          <span class="btn-label-full">Bắn Pháo Hoa</span>
+          <span class="btn-label-short">Pháo Hoa</span>
         </button>
 
         <button id="btn-action-postcard" class="btn-secondary">
-          <span>📸</span> Chụp Thiệp Kỷ Niệm
+          <span class="btn-icon" aria-hidden="true">📸</span>
+          <span class="btn-label-full">Chụp Thiệp Kỷ Niệm</span>
+          <span class="btn-label-short">Thiệp</span>
         </button>
 
         <button id="btn-action-trivia" class="btn-secondary">
-          <span>📜</span> Sự Tích & Đố Vui
+          <span class="btn-icon" aria-hidden="true">📜</span>
+          <span class="btn-label-full">Sự Tích & Đố Vui</span>
+          <span class="btn-label-short">Đố Vui</span>
         </button>
+        </div>
       </div>
     </footer>
   </div>

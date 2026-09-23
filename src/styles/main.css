@@ -114,3 +114,10 @@ html, body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--gold-light);
 }
+
+@media (max-width: 768px) {
+  html {
+    font-size: 14.2px;
+  }
+}
+

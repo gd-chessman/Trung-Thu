@@ -119,6 +119,7 @@
 .cam-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 8px 16px;
   border-radius: 30px;
@@ -131,6 +132,12 @@
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
+  min-height: 40px;
+}
+
+.cam-btn-icon {
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .cam-btn:hover {
@@ -153,12 +160,29 @@
   pointer-events: auto;
   flex-wrap: wrap;
   justify-content: center;
+  width: 100%;
+  max-width: 560px;
+}
+
+.dock-action-grid {
+  display: contents;
+}
+
+.btn-label-short,
+.cam-label-short {
+  display: none;
+}
+
+.btn-icon {
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 /* Primary Action: Thả Đèn Trời */
 .btn-primary-wish {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   background: linear-gradient(135deg, #c91b1b 0%, #8c0c0c 100%);
   border: 1.5px solid var(--gold-warm);
@@ -183,6 +207,7 @@
 .btn-secondary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -718,23 +743,98 @@
   .btn-label-desktop {
     display: none;
   }
+  .bottom-dock {
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 10px;
+    align-items: stretch;
+  }
   .dock-camera-bar {
-    padding: 4px 6px;
+    width: 100%;
+    max-width: none;
+    padding: 4px;
+    gap: 4px;
+    justify-content: stretch;
+    scrollbar-width: none;
+  }
+  .dock-camera-bar::-webkit-scrollbar {
+    display: none;
   }
   .cam-btn {
-    padding: 6px 12px;
-    font-size: 0.78rem;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 0.68rem;
+    min-height: 44px;
+    flex-direction: column;
+    gap: 3px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+  .cam-btn-icon {
+    font-size: 1.05rem;
+  }
+  .cam-btn-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dock-action-bar {
+    flex-direction: column;
+    gap: 8px;
+    max-width: none;
   }
   .btn-primary-wish {
-    padding: 10px 18px;
-    font-size: 0.9rem;
+    width: 100%;
+    padding: 13px 14px;
+    font-size: 0.88rem;
+    min-height: 48px;
+  }
+  .dock-action-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+  .btn-label-full,
+  .cam-label-long {
+    display: none;
+  }
+  .btn-label-short,
+  .cam-label-short {
+    display: inline;
   }
   .btn-secondary {
-    padding: 9px 14px;
-    font-size: 0.82rem;
+    width: 100%;
+    padding: 11px 6px;
+    font-size: 0.72rem;
+    min-height: 46px;
+    flex-direction: column;
+    gap: 4px;
+    border-radius: 14px;
+  }
+  .btn-secondary .btn-icon {
+    font-size: 1.1rem;
   }
   .modal-card {
     padding: 24px 20px;
+  }
+  .toast-msg {
+    top: 72px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    transform: translateY(-16px);
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    text-align: center;
+    justify-content: center;
+    border-radius: 16px;
+  }
+  .toast-msg.show {
+    transform: translateY(0);
   }
 }
 

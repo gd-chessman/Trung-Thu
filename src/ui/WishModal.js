@@ -68,7 +68,6 @@ export class WishModal {
     const text = this.textInput.value.trim() || 'Gia đình bình an, vạn sự như ý';
     const author = this.authorInput.value.trim() || 'Bạn';
 
-    // Release 3D Lantern in scene & sync to Google Sheet
     await this.sceneManager.releaseWish(author, text);
 
     // Confetti effect
@@ -84,7 +83,7 @@ export class WishModal {
 
     // Show toast message
     if (this.showToast) {
-      this.showToast(`🏮 Đèn lồng nguyện ước "${text}" đã bay lên trời và được lưu trữ!`, 5000);
+      this.showToast('🏮 Đèn lồng nguyện ước đã bay lên bầu trăng rằm!', 5000);
     }
   }
 }

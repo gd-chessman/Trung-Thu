@@ -19,8 +19,10 @@ window.addEventListener('DOMContentLoaded', () => {
   // Initialize UI & Interactions
   const uiManager = new UIManager(sceneManager);
 
-  // Welcome Toast Notification after load
   setTimeout(() => {
-    uiManager.showToast('🌕 Chào mừng bạn đến với Đêm Hội Trăng Rằm 3D! Hãy bấm "Thả Đèn Trời" để gửi điều ước nhé.', 5000);
+    uiManager.showToast(
+      '🌕 Chào mừng bạn đến với Đêm Hội Trăng Rằm 3D! Hãy bấm "Thả Đèn Trời" để gửi điều ước nhé.',
+      5000
+    );
   }, 1200);
 });

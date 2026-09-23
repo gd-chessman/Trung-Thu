@@ -177,14 +177,14 @@ export class SceneManager {
 
     const lantern = this.skyLanterns.releaseWishLantern(author, wishText, spawnPos);
 
-    // 2. Save wish asynchronously to Google Sheet & LocalStorage
+    let saveResult = null;
     try {
-      await googleSheetService.saveWish(author, wishText);
+      saveResult = await googleSheetService.saveWish(author, wishText);
     } catch (e) {
       console.warn('Could not save to sheet:', e);
     }
 
-    return lantern;
+    return { lantern, saveResult };
   }
 
   /**

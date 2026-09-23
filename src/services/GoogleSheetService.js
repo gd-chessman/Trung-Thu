@@ -1,18 +1,60 @@
 /**
  * GoogleSheetService.js
- * Handles reading and writing wishes to/from Google Sheets:
- * URL: https://docs.google.com/spreadsheets/d/1dVQllCJrgff76jB7-T88wD44s9QrIghOIvNZF2hJHM0/edit
+ * Reads wishes via public gviz API; writes via Google Apps Script Web App.
+ * Env (tuỳ chọn): VITE_GOOGLE_SHEET_URL — đọc; VITE_APPS_SCRIPT_URL — ghi
  */
 
-const SHEET_ID = '1dVQllCJrgff76jB7-T88wD44s9QrIghOIvNZF2hJHM0';
-const GVIZ_URL = `https://docs.google.com/spreadsheets/d/1dVQllCJrgff76jB7-T88wD44s9QrIghOIvNZF2hJHM0/gviz/tq?tqx=out:json`;
 const STORAGE_KEY = 'midautumn_wishes_cache';
 const APPS_SCRIPT_URL_KEY = 'midautumn_apps_script_url';
 
+const HEADER_LABELS = new Set(['thời gian', 'người gửi', 'lời ước', 'timestamp', 'author', 'wish']);
+
+const SHEET_ID_FROM_URL = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
+
+/** Link sheet hoặc chỉ ID — dùng để đồng bộ đọc điều ước lúc mở trang */
+function resolveSheetId() {
+  const raw = import.meta.env.VITE_GOOGLE_SHEET_URL;
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return '';
+  }
+
+  const value = raw.trim();
+  const match = value.match(SHEET_ID_FROM_URL);
+  if (match?.[1]) {
+    return match[1];
+  }
+  if (/^[a-zA-Z0-9-_]+$/.test(value)) {
+    return value;
+  }
+
+  return '';
+}
+
+function buildGvizUrl(sheetId) {
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json`;
+}
+
+function resolveAppsScriptUrl() {
+  const fromEnv = import.meta.env.VITE_APPS_SCRIPT_URL;
+  if (typeof fromEnv === 'string' && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
+  try {
+    return localStorage.getItem(APPS_SCRIPT_URL_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
 export class GoogleSheetService {
   constructor() {
-    this.sheetId = SHEET_ID;
-    this.appsScriptUrl = localStorage.getItem(APPS_SCRIPT_URL_KEY) || '';
+    this.sheetId = resolveSheetId();
+    this.gvizUrl = this.sheetId ? buildGvizUrl(this.sheetId) : '';
+    this.appsScriptUrl = resolveAppsScriptUrl();
+  }
+
+  getSheetId() {
+    return this.sheetId;
   }
 
   setAppsScriptUrl(url) {
@@ -21,7 +63,55 @@ export class GoogleSheetService {
   }
 
   getAppsScriptUrl() {
-    return this.appsScriptUrl;
+    return this.appsScriptUrl || resolveAppsScriptUrl();
+  }
+
+  isSheetWriteConfigured() {
+    return Boolean(this.getAppsScriptUrl());
+  }
+
+  /**
+   * POST wish to Apps Script (text/plain avoids CORS preflight issues).
+   */
+  async postWishToSheet(payload) {
+    const url = this.getAppsScriptUrl();
+    if (!url) {
+      return { ok: false, reason: 'missing_apps_script_url' };
+    }
+
+    const body = JSON.stringify(payload);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body
+      });
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.ok === false) {
+          return { ok: false, reason: data.error || 'apps_script_error' };
+        }
+        return { ok: true };
+      }
+    } catch (err) {
+      console.warn('CORS POST failed, retrying no-cors:', err);
+    }
+
+    try {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body
+      });
+      return { ok: true, opaque: true };
+    } catch (err) {
+      console.warn('Error posting to Google Apps Script:', err);
+      return { ok: false, reason: String(err) };
+    }
   }
 
   /**
@@ -30,7 +120,6 @@ export class GoogleSheetService {
   async fetchWishes() {
     const wishes = [];
 
-    // 1. Load from local cache first
     try {
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {
@@ -43,12 +132,14 @@ export class GoogleSheetService {
       console.warn('Could not read cached wishes', e);
     }
 
-    // 2. Fetch live rows from public Google Sheet
+    if (!this.gvizUrl) {
+      return wishes;
+    }
+
     try {
-      const res = await fetch(GVIZ_URL, { cache: 'no-cache' });
+      const res = await fetch(this.gvizUrl, { cache: 'no-cache' });
       const text = await res.text();
 
-      // Response format: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
       const jsonStart = text.indexOf('{');
       const jsonEnd = text.lastIndexOf('}');
       if (jsonStart !== -1 && jsonEnd !== -1) {
@@ -61,13 +152,15 @@ export class GoogleSheetService {
             if (!r || !r.c) return;
             const c = r.c;
 
-            // Sheet columns structure: Col 0: Timestamp/Date, Col 1: Author, Col 2: Wish
-            // Or if single row without headers:
             let dateStr = c[0] ? (c[0].f || c[0].v || '') : '';
             let author = c[1] ? (c[1].v || '') : '';
             let wish = c[2] ? (c[2].v || '') : '';
 
-            // Handle case where column 0 is author and column 1 is wish
+            const firstCell = String(dateStr || author || '').trim().toLowerCase();
+            if (HEADER_LABELS.has(firstCell)) {
+              return;
+            }
+
             if (!wish && author) {
               wish = author;
               author = dateStr || 'Người ước nguyện';
@@ -83,7 +176,6 @@ export class GoogleSheetService {
                 fromSheet: true
               };
 
-              // Avoid duplicates with local cache
               const exists = wishes.some(w => w.wish === item.wish && w.author === item.author);
               if (!exists) {
                 wishes.push(item);
@@ -111,7 +203,6 @@ export class GoogleSheetService {
       timestamp
     };
 
-    // 1. Immediately save to LocalStorage cache
     try {
       const cached = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
       cached.unshift(newWish);
@@ -120,25 +211,17 @@ export class GoogleSheetService {
       console.warn('Failed to save wish to local storage', e);
     }
 
-    // 2. If Google Apps Script Web App URL is set, send to Sheet
-    if (this.appsScriptUrl) {
-      try {
-        await fetch(this.appsScriptUrl, {
-          method: 'POST',
-          mode: 'no-cors', // Google Apps Script redirects require no-cors in browser
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            timestamp,
-            author: newWish.author,
-            wish: newWish.wish
-          })
-        });
-      } catch (err) {
-        console.warn('Error posting to Google Apps Script:', err);
-      }
-    }
+    const sheetResult = await this.postWishToSheet({
+      timestamp,
+      author: newWish.author,
+      wish: newWish.wish
+    });
 
-    return newWish;
+    return {
+      ...newWish,
+      syncedToSheet: sheetResult.ok,
+      sheetSyncReason: sheetResult.reason || null
+    };
   }
 }
 

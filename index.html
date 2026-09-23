@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tết Trung Thu 3D - Đêm Hội Trăng Rằm & Đèn Lồng Điều Ước</title>
+  <meta name="description" content="Khám phá không gian 3D Tết Trung Thu huyền ảo với mặt trăng rằm hoàng kim, đèn ông sao 3D, bánh nướng hoàng kim, thỏ ngọc, trải nghiệm thả đèn trời cầu nguyện và âm nhạc cổ truyền Việt Nam." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/src/styles/main.css" />
+  <link rel="stylesheet" href="/src/styles/ui.css" />
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="loading-screen">
+    <div class="loading-lantern">🏮</div>
+    <h2>ĐÊM HỘI TRĂNG RẰM</h2>
+    <div class="loading-bar-wrap">
+      <div class="loading-bar" style="width: 100%;"></div>
+    </div>
+    <p class="loading-status">Đang thắp sáng không gian 3D Trung Thu...</p>
+  </div>
+
+  <!-- WebGL 3D Canvas -->
+  <div id="canvas-container">
+    <canvas id="webgl-canvas"></canvas>
+  </div>
+
+  <!-- UI Overlay System -->
+  <div id="app-overlay">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="brand-wrapper" id="btn-brand-home">
+        <div class="brand-icon">🏮</div>
+        <div class="brand-text">
+          <h1>TẾT TRUNG THU</h1>
+          <p>Đêm Rằm Đoàn Viên • Rằm Tháng Tám</p>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <a href="https://docs.google.com/spreadsheets/d/1dVQllCJrgff76jB7-T88wD44s9QrIghOIvNZF2hJHM0/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer" class="icon-btn" title="Mở Google Sheet lưu trữ điều ước">
+          <span>📊</span>
+          <span class="btn-label-desktop">Google Sheet</span>
+        </a>
+
+        <button id="btn-audio-toggle" class="icon-btn active" title="Bật/Tắt Nhạc Dân Tộc Đàn Tranh">
+          <span>🎵</span>
+          <span class="btn-text btn-label-desktop">Nhạc Cổ Truyền: Bật</span>
+        </button>
+
+        <button id="btn-fullscreen" class="icon-btn" title="Toàn màn hình">
+          <span>⛶</span>
+          <span class="btn-label-desktop">Toàn Màn Hình</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Floating Toast Notification -->
+    <div id="toast-msg" class="toast-msg"></div>
+
+    <!-- Bottom Controls Dock -->
+    <footer class="bottom-dock">
+      <!-- Camera View Switcher -->
+      <nav class="dock-camera-bar" aria-label="Góc nhìn 3D">
+        <button class="cam-btn active" data-view="overview">
+          <span>🌌</span> Toàn Cảnh
+        </button>
+        <button class="cam-btn" data-view="starlantern">
+          <span>⭐</span> Đèn Ông Sao
+        </button>
+        <button class="cam-btn" data-view="mooncake">
+          <span>🥮</span> Bánh Trung Thu
+        </button>
+        <button class="cam-btn" data-view="rabbit">
+          <span>🐰</span> Thỏ Ngọc Cung Trăng
+        </button>
+      </nav>
+
+      <!-- Action Buttons Bar -->
+      <div class="dock-action-bar">
+        <button id="btn-action-wish" class="btn-primary-wish">
+          <span>🏮</span> Thả Đèn Trời Cầu Nguyện
+        </button>
+
+        <button id="btn-action-firework" class="btn-secondary">
+          <span>🎆</span> Bắn Pháo Hoa
+        </button>
+
+        <button id="btn-action-postcard" class="btn-secondary">
+          <span>📸</span> Chụp Thiệp Kỷ Niệm
+        </button>
+
+        <button id="btn-action-trivia" class="btn-secondary">
+          <span>📜</span> Sự Tích & Đố Vui
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Modal 1: Thả Đèn Trời Cầu Nguyện -->
+  <div id="wish-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2><span>🏮</span> Thả Đèn Trời Cầu Nguyện</h2>
+          <p>Gửi gắm ước nguyện bình an, may mắn lên vầng trăng rằm</p>
+        </div>
+        <button id="btn-close-wish" class="btn-close" aria-label="Đóng">&times;</button>
+      </div>
+
+      <div class="form-group">
+        <label for="wish-author">Tên người gửi (hoặc gia đình):</label>
+        <input type="text" id="wish-author" class="form-input" placeholder="Ví dụ: Nguyễn Văn An / Gia Đình Đoàn Viên" maxlength="35" />
+      </div>
+
+      <div class="form-group">
+        <label for="wish-text">Lời chúc / Điều ước của bạn:</label>
+        <textarea id="wish-text" class="form-textarea" rows="3" placeholder="Nhập lời ước nguyện của bạn..." maxlength="120">Gia đình bình an, vạn sự như ý, ấm áp sum vầy</textarea>
+        
+        <div class="wish-presets">
+          <span class="preset-chip active" data-wish="Gia đình bình an, vạn sự như ý, ấm áp sum vầy">🏡 Bình an & Sum vầy</span>
+          <span class="preset-chip" data-wish="Công danh hanh thông, tài lộc dồi dào, vạn sự cát tường">💰 Tài lộc & Thịnh vượng</span>
+          <span class="preset-chip" data-wish="Học hành tấn tới, thi cử đỗ đạt, tương lai rực rỡ">🎓 Học vấn đỗ đạt</span>
+          <span class="preset-chip" data-wish="Tình duyên bền chặt, trăm năm hạnh phúc vẹn tròn">💖 Tình duyên viên mãn</span>
+        </div>
+      </div>
+
+      <!-- Live 3D Lantern Paper Preview -->
+      <div class="lantern-preview">
+        <div id="preview-wish-text" class="lantern-preview-text">"Gia đình bình an, vạn sự như ý, ấm áp sum vầy"</div>
+        <div id="preview-wish-author" class="lantern-preview-author">— Người gửi —</div>
+      </div>
+
+      <button id="btn-submit-wish" class="btn-submit-wish">
+        <span>🔥</span> Thắp Lửa & Thả Đèn Lên Bầu Trời
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 2: Chụp Thiệp Kỷ Niệm -->
+  <div id="postcard-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 680px;">
+      <div class="modal-header">
+        <div>
+          <h2><span>📸</span> Thiệp Kỷ Niệm Trung Thu</h2>
+          <p>Khoảnh khắc trăng rằm tuyệt đẹp của riêng bạn</p>
+        </div>
+        <button id="btn-close-postcard" class="btn-close" aria-label="Đóng">&times;</button>
+      </div>
+
+      <div class="postcard-container">
+        <canvas id="postcard-canvas" class="postcard-img"></canvas>
+      </div>
+
+      <button id="btn-download-postcard" class="btn-submit-wish" style="background: linear-gradient(135deg, #1d7874 0%, #104e4a 100%);">
+        <span>💾</span> Tải Thiệp Chúc Mừng Về Máy
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 3: Sự Tích & Đố Vui Trung Thu -->
+  <div id="trivia-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <div>
+          <h2><span>📜</span> Sự Tích & Đố Vui Trung Thu</h2>
+          <p>Khám phá nét đẹp văn hóa dân gian Tết Đoàn Viên</p>
+        </div>
+        <button id="btn-close-trivia" class="btn-close" aria-label="Đóng">&times;</button>
+      </div>
+
+      <!-- Tabs Header -->
+      <div class="tabs-header">
+        <button id="tab-btn-stories" class="tab-btn active">📖 Sự Tích Dân Gian</button>
+        <button id="tab-btn-quiz" class="tab-btn">🎯 Đố Vui Đêm Rằm</button>
+      </div>
+
+      <!-- Tab Content: Stories -->
+      <div id="content-stories" class="tab-content active">
+        <div class="story-item">
+          <h3><span>🌕</span> Sự Tích Chú Cuội Cây Đa & Cung Trăng</h3>
+          <p>Ngày xưa, chàng Cuội kiếm củi vô tình phát hiện ra cây đa thuốc quý có thể cải tử hoàn sinh. Một lần, vợ chàng lỡ tay tưới nước bẩn khiến cây bỗng bay lên trời. Cuội vội lấy rìu móc vào rễ cây định giữ lại, nhưng cây đa kéo bổng chàng bay thẳng lên cung trăng. Từ đó, mỗi mùa trăng rằm, nhìn lên mặt trăng ta vẫn thấy bóng hình chú Cuội ngồi tựa gốc đa ngóng về nhân gian.</p>
+        </div>
+
+        <div class="story-item">
+          <h3><span>⭐</span> Ý Nghĩa Đèn Ông Sao Năm Cánh</h3>
+          <p>Chiếc đèn ông sao lung linh gắn liền với tuổi thơ bao thế hệ người Việt. Năm cánh sao tượng trưng cho Ngũ hành (Kim - Mộc - Thủy - Hỏa - Thổ), biểu thị sự hòa hợp của đất trời, cầu cho mưa thuận gió hòa, mùa màng bội thu và cuộc sống ấm no.</p>
+        </div>
+
+        <div class="story-item">
+          <h3><span>🥮</span> Bánh Trung Thu - Biểu Tượng Đoàn Viên</h3>
+          <p>Bánh dẻo hình tròn tượng trưng cho vầng trăng rằm và sự vẹn toàn, viên mãn. Bánh nướng hình vuông tượng trưng cho đất mẹ chở che. Mùa trăng rằm là dịp để mọi người quây quần thưởng bánh, nhấp ngụm trà sen thơm ngát và sẻ chia niềm vui sum họp.</p>
+        </div>
+      </div>
+
+      <!-- Tab Content: Quiz -->
+      <div id="content-quiz" class="tab-content">
+        <div id="quiz-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Chi Tiết Đèn Lồng & Lời Chúc (Lantern Detail Modal) -->
+  <div id="lantern-detail-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-card" style="max-width: 520px; text-align: center;">
+      <div class="modal-header" style="justify-content: center; position: relative;">
+        <div>
+          <span id="lantern-detail-badge" class="detail-badge badge-wish">🏮 ĐÈN LỒNG NGUYỆN CẦU</span>
+          <h2 id="lantern-detail-title" style="margin-top: 10px; font-size: 1.35rem; justify-content: center;">Lời Ước Nguyện Gửi Vầng Trăng</h2>
+        </div>
+        <button id="btn-close-lantern-detail" class="btn-close" style="position: absolute; right: 0; top: 0;" aria-label="Đóng">&times;</button>
+      </div>
+
+      <div class="lantern-detail-content">
+        <div id="lantern-detail-body" class="detail-body-quote"></div>
+
+        <div id="lantern-detail-meta" class="detail-meta">
+          <div class="meta-item">
+            <span>👤 Người gửi:</span>
+            <strong id="lantern-detail-author">Bạn</strong>
+          </div>
+          <div class="meta-item">
+            <span>⏰ Thời gian:</span>
+            <span id="lantern-detail-time">Rằm Tháng Tám</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-action-buttons">
+        <button id="btn-lantern-detail-heart" class="btn-heart" title="Thả tim nguyện ước">
+          <span>❤️</span> <span id="lantern-heart-count">1</span>
+        </button>
+        <button id="btn-lantern-detail-action" class="btn-submit-wish" style="margin-top: 0; flex: 1;">
+          🏮 Thả Đèn Của Riêng Bạn
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entry Script -->
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

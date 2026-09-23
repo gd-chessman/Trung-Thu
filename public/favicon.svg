@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="30" fill="#090d1a" stroke="#f5c518" stroke-width="2"/>
+  <!-- Golden Moon Crescent -->
+  <path d="M 42 12 A 22 22 0 1 0 42 52 A 16 16 0 1 1 42 12 Z" fill="#ffd166" filter="drop-shadow(0 0 4px #f5c518)"/>
+  <!-- Red 5-Point Star Lantern -->
+  <polygon points="32,16 35,26 45,26 37,32 40,42 32,36 24,42 27,32 19,26 29,26" fill="#e63946" stroke="#ffd166" stroke-width="1.5"/>
+  <circle cx="32" cy="31" r="3" fill="#fff" filter="drop-shadow(0 0 3px #ffaa00)"/>
+</svg>

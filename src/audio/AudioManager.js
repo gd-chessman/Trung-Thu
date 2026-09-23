@@ -12,6 +12,7 @@ export class AudioManager {
     this.musicTimeout = null;
     this.isMuted = false;
     this.currentNoteIndex = 0;
+    this.unlockedAt = 0;
 
     // Traditional Vietnamese Pentatonic Scale (Hò, Xự, Xang, Xê, Cống)
     // Famous Mid-Autumn Melody notes: "Chiếc Đèn Ông Sao" & "Rước Đèn Tháng Tám" motif
@@ -56,6 +57,17 @@ export class AudioManager {
     }
   }
 
+  /** Gọi một lần sau tương tác đầu — tránh chime UI trùng tiếng “chạm” khi mở nhạc */
+  unlockFromUserGesture() {
+    this.initContext();
+    this.unlockedAt = Date.now();
+  }
+
+  shouldSuppressUiChime() {
+    if (!this.unlockedAt) return false;
+    return Date.now() - this.unlockedAt < 700;
+  }
+
   toggleMusic() {
     this.initContext();
     if (this.isPlayingMusic) {
@@ -67,12 +79,26 @@ export class AudioManager {
     }
   }
 
-  startMusic() {
+  startMusic(options = {}) {
     if (this.isPlayingMusic) return;
     this.initContext();
     this.isPlayingMusic = true;
     this.currentNoteIndex = 0;
-    this.playNextMelodyNote();
+
+    const delayMs = options.delayFirstNoteMs ?? 0;
+    if (this.musicTimeout) {
+      clearTimeout(this.musicTimeout);
+      this.musicTimeout = null;
+    }
+
+    if (delayMs > 0) {
+      this.musicTimeout = setTimeout(() => {
+        this.musicTimeout = null;
+        this.playNextMelodyNote();
+      }, delayMs);
+    } else {
+      this.playNextMelodyNote();
+    }
   }
 
   stopMusic() {
@@ -192,6 +218,7 @@ export class AudioManager {
 
   // SFX: Wind Chime sparkle on interaction
   playChime(freq = 880, dur = 0.5) {
+    if (this.shouldSuppressUiChime()) return;
     this.initContext();
     if (!this.ctx || this.isMuted) return;
 

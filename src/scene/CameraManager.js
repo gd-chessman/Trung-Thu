@@ -27,16 +27,16 @@ export class CameraManager {
     // Camera view presets
     this.presets = {
       overview: {
-        pos: new THREE.Vector3(0, 10, 36),
+        pos: new THREE.Vector3(0, 11.5, 54),
         target: new THREE.Vector3(0, 24, -40)
       },
       starlantern: {
-        pos: new THREE.Vector3(-11, 4.5, 15),
-        target: new THREE.Vector3(-12, 3.2, 0)
+        pos: new THREE.Vector3(-11, 8.3, 15),
+        target: new THREE.Vector3(-12, 7.2, 0)
       },
       mooncake: {
-        pos: new THREE.Vector3(13, 6.5, 11),
-        target: new THREE.Vector3(12, 1.8, 0)
+        pos: new THREE.Vector3(13, 10.2, 11),
+        target: new THREE.Vector3(12, 5.8, 0)
       },
       rabbit: {
         pos: new THREE.Vector3(0, 25.5, -17),

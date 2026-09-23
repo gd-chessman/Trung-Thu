@@ -83,10 +83,10 @@ export class SceneManager {
     this.moon = new Moon(this.scene);
 
     // 2. Traditional Vietnamese 5-pointed Star Lantern
-    this.starLantern = new StarLantern(this.scene, new THREE.Vector3(-12, 3.2, 0));
+    this.starLantern = new StarLantern(this.scene, new THREE.Vector3(-12, 7.2, 0));
 
     // 3. Artisanal Mooncake & Tea Set
-    this.mooncake = new Mooncake(this.scene, new THREE.Vector3(12, 1.2, 0));
+    this.mooncake = new Mooncake(this.scene, new THREE.Vector3(12, 5.2, 0));
 
     // 4. Jade Rabbit on cloud
     this.jadeRabbit = new JadeRabbit(this.scene, new THREE.Vector3(0, 21, -35));

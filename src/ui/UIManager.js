@@ -48,28 +48,23 @@ export class UIManager {
     const audioBtn = document.getElementById('btn-audio-toggle');
     const audioText = audioBtn.querySelector('.btn-text');
 
-    const startDefaultMusic = () => {
+    const startDefaultMusic = (delayFirstNoteMs = 0) => {
       if (this.musicWanted && !audioManager.isPlayingMusic) {
-        audioManager.startMusic();
+        audioManager.startMusic({ delayFirstNoteMs });
       }
     };
 
-    // Try starting music right away
-    startDefaultMusic();
-
-    // Browser autoplay policy: resume AudioContext and start music on first user touch/click anywhere
+    // Chỉ bật nhạc sau cử chỉ người dùng (autoplay policy)
     const onFirstUserAction = () => {
+      audioManager.unlockFromUserGesture();
       if (this.musicWanted) {
-        audioManager.initContext();
-        startDefaultMusic();
+        startDefaultMusic(500);
       }
-      window.removeEventListener('pointerdown', onFirstUserAction);
-      window.removeEventListener('click', onFirstUserAction);
+      window.removeEventListener('pointerdown', onFirstUserAction, true);
       window.removeEventListener('keydown', onFirstUserAction);
     };
 
-    window.addEventListener('pointerdown', onFirstUserAction, { passive: true });
-    window.addEventListener('click', onFirstUserAction, { passive: true });
+    window.addEventListener('pointerdown', onFirstUserAction, { passive: true, capture: true });
     window.addEventListener('keydown', onFirstUserAction, { passive: true });
 
     audioBtn.addEventListener('click', (e) => {

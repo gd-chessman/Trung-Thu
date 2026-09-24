@@ -50,50 +50,17 @@ export class AudioManager {
   initContext() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return null;
       this.ctx = new AudioCtx();
     }
-    return this.ctx;
-  }
-
-  /** Resume context + tiếng “click” cực nhỏ — Safari/iOS cần trong cử chỉ chạm. */
-  async ensureUnlocked() {
-    const ctx = this.initContext();
-    if (!ctx) return false;
-
-    if (ctx.state === 'suspended') {
-      try {
-        await ctx.resume();
-      } catch (e) {
-        console.warn('AudioContext resume failed:', e);
-        return false;
-      }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
     }
-
-    if (ctx.state === 'running' && !this._iosPrimed) {
-      try {
-        const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.connect(ctx.destination);
-        src.start(0);
-        src.stop(0);
-        this._iosPrimed = true;
-      } catch {
-        /* ignore */
-      }
-    }
-
-    return ctx.state === 'running';
   }
 
   /** Gọi một lần sau tương tác đầu — tránh chime UI trùng tiếng “chạm” khi mở nhạc */
-  async unlockFromUserGesture() {
-    const ok = await this.ensureUnlocked();
-    if (ok) {
-      this.unlockedAt = Date.now();
-    }
-    return ok;
+  unlockFromUserGesture() {
+    this.initContext();
+    this.unlockedAt = Date.now();
   }
 
   shouldSuppressUiChime() {
@@ -102,18 +69,19 @@ export class AudioManager {
   }
 
   toggleMusic() {
+    this.initContext();
     if (this.isPlayingMusic) {
       this.stopMusic();
       return false;
+    } else {
+      this.startMusic();
+      return true;
     }
-    void this.ensureUnlocked().then((ok) => {
-      if (ok) this.startMusic();
-    });
-    return true;
   }
 
   startMusic(options = {}) {
     if (this.isPlayingMusic) return;
+    this.initContext();
     this.isPlayingMusic = true;
     this.currentNoteIndex = 0;
 
@@ -123,20 +91,13 @@ export class AudioManager {
       this.musicTimeout = null;
     }
 
-    const begin = () => {
-      void this.ensureUnlocked().then((ok) => {
-        if (!ok || !this.isPlayingMusic) return;
-        this.playNextMelodyNote();
-      });
-    };
-
     if (delayMs > 0) {
       this.musicTimeout = setTimeout(() => {
         this.musicTimeout = null;
-        begin();
+        this.playNextMelodyNote();
       }, delayMs);
     } else {
-      begin();
+      this.playNextMelodyNote();
     }
   }
 
@@ -229,69 +190,68 @@ export class AudioManager {
 
   // SFX: Lantern Ignition & Release (Soft rising warm breath)
   playLanternRelease() {
-    void this.ensureUnlocked().then((ok) => {
-      if (!ok || !this.ctx || this.isMuted) return;
+    this.initContext();
+    if (!this.ctx || this.isMuted) return;
 
-      const t = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(260, t);
-      osc.frequency.exponentialRampToValueAtTime(620, t + 1.2);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(260, t);
+    osc.frequency.exponentialRampToValueAtTime(620, t + 1.2);
 
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.18, t + 0.2);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.18, t + 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
 
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
 
-      osc.start(t);
-      osc.stop(t + 1.5);
+    osc.start(t);
+    osc.stop(t + 1.5);
 
-      this.playChime(784, 0.4);
-      setTimeout(() => this.playChime(1046, 0.6), 250);
-    });
+    // Chime sparkle
+    this.playChime(784, 0.4);
+    setTimeout(() => this.playChime(1046, 0.6), 250);
   }
 
   // SFX: Wind Chime sparkle on interaction
   playChime(freq = 880, dur = 0.5) {
     if (this.shouldSuppressUiChime()) return;
-    void this.ensureUnlocked().then((ok) => {
-      if (!ok || !this.ctx || this.isMuted) return;
+    this.initContext();
+    if (!this.ctx || this.isMuted) return;
 
-      const t = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, t);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t);
 
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.15, t + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.15, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
 
-      osc.start(t);
-      osc.stop(t + dur);
-    });
+    osc.start(t);
+    osc.stop(t + dur);
   }
 
   // SFX: Firework launch and burst crackle
   playFirework() {
+    this.initContext();
+    if (!this.ctx || this.isMuted) return;
+
     const now = performance.now();
     if (now - (this._lastFireworkSfxAt || 0) < 320) {
       return;
     }
     this._lastFireworkSfxAt = now;
 
-    void this.ensureUnlocked().then((ok) => {
-      if (!ok || !this.ctx || this.isMuted) return;
-
-      const t = this.ctx.currentTime;
+    const t = this.ctx.currentTime;
 
     // Launch whistle
     const whistle = this.ctx.createOscillator();
@@ -338,7 +298,6 @@ export class AudioManager {
       noise.start(bt);
       noise.stop(bt + 0.6);
     }, 400);
-    });
   }
 }
 

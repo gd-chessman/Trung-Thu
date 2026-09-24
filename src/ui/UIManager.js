@@ -48,57 +48,40 @@ export class UIManager {
     const audioBtn = document.getElementById('btn-audio-toggle');
     const audioText = audioBtn.querySelector('.btn-text');
 
-    const isCoarsePointer = () => window.matchMedia('(pointer: coarse)').matches;
-
     const startDefaultMusic = (delayFirstNoteMs = 0) => {
       if (this.musicWanted && !audioManager.isPlayingMusic) {
         audioManager.startMusic({ delayFirstNoteMs });
       }
     };
 
-    let audioUnlocked = false;
+    // Chỉ bật nhạc sau cử chỉ người dùng (autoplay policy)
     const onFirstUserAction = () => {
-      if (audioUnlocked) return;
-      audioUnlocked = true;
-
-      void audioManager.unlockFromUserGesture().then((ok) => {
-        if (!ok || !this.musicWanted) return;
-        const delay = isCoarsePointer() ? 0 : 400;
-        startDefaultMusic(delay);
-      });
-
+      audioManager.unlockFromUserGesture();
+      if (this.musicWanted) {
+        startDefaultMusic(500);
+      }
       window.removeEventListener('pointerdown', onFirstUserAction, true);
-      window.removeEventListener('touchstart', onFirstUserAction, true);
       window.removeEventListener('keydown', onFirstUserAction);
     };
 
     window.addEventListener('pointerdown', onFirstUserAction, { passive: true, capture: true });
-    window.addEventListener('touchstart', onFirstUserAction, { passive: true, capture: true });
     window.addEventListener('keydown', onFirstUserAction, { passive: true });
-
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        void audioManager.ensureUnlocked();
-      }
-    });
 
     audioBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      void audioManager.unlockFromUserGesture().then(() => {
-        if (this.musicWanted) {
-          this.musicWanted = false;
-          audioManager.stopMusic();
-          audioBtn.classList.remove('active');
-          if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Tắt';
-          this.showToast('🔇 Đã tắt âm thanh');
-        } else {
-          this.musicWanted = true;
-          audioManager.startMusic();
-          audioBtn.classList.add('active');
-          if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Bật';
-          this.showToast('🎶 Đang phát giai điệu dân tộc Đàn Tranh Trung Thu');
-        }
-      });
+      if (this.musicWanted) {
+        this.musicWanted = false;
+        audioManager.stopMusic();
+        audioBtn.classList.remove('active');
+        if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Tắt';
+        this.showToast('🔇 Đã tắt âm thanh');
+      } else {
+        this.musicWanted = true;
+        audioManager.startMusic();
+        audioBtn.classList.add('active');
+        if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Bật';
+        this.showToast('🎶 Đang phát giai điệu dân tộc Đàn Tranh Trung Thu');
+      }
     });
 
     // 2. Camera View Buttons

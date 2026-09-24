@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import gsap from 'gsap';
+import { SCENE_Y_LIFT } from './sceneLayout.js';
 
 export class CameraManager {
   constructor(renderer, domElement) {
@@ -24,22 +25,23 @@ export class CameraManager {
     this.controls.maxPolarAngle = Math.PI / 2 + 0.08; // don't go too far under ground
     this.controls.minPolarAngle = 0.1;
 
-    // Camera view presets
+    // Target Y giữ gần bản gốc — chỉ nâng camera pos nhẹ; vật thể đã +SCENE_Y_LIFT nên hiện cao hơn trong khung hình
+    const lift = SCENE_Y_LIFT;
     this.presets = {
       overview: {
-        pos: new THREE.Vector3(0, 11.5, 54),
+        pos: new THREE.Vector3(0, 11.5 + lift * 0.35, 54),
         target: new THREE.Vector3(0, 24, -40)
       },
       starlantern: {
-        pos: new THREE.Vector3(-11, 8.3, 15),
+        pos: new THREE.Vector3(-11, 8.3 + lift * 0.25, 15),
         target: new THREE.Vector3(-12, 7.2, 0)
       },
       mooncake: {
-        pos: new THREE.Vector3(13, 10.2, 11),
+        pos: new THREE.Vector3(13, 10.2 + lift * 0.25, 11),
         target: new THREE.Vector3(12, 5.8, 0)
       },
       rabbit: {
-        pos: new THREE.Vector3(0, 25.5, -17),
+        pos: new THREE.Vector3(0, 25.5 + lift * 0.2, -17),
         target: new THREE.Vector3(0, 25.0, -35)
       }
     };

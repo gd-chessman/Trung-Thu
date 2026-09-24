@@ -4,6 +4,7 @@
  */
 
 import * as THREE from 'three';
+import { MOON_Y } from '../scene/sceneLayout.js';
 
 export class Moon {
   constructor(scene) {
@@ -94,7 +95,7 @@ export class Moon {
     });
 
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.position.set(0, 52, -130);
+    this.mesh.position.set(0, MOON_Y, -130);
     this.group.add(this.mesh);
 
     // Warm radiant point light from the moon
@@ -175,7 +176,7 @@ export class Moon {
     });
 
     this.clouds = new THREE.Mesh(cloudGeo, cloudMat);
-    this.clouds.position.set(0, 52, -125);
+    this.clouds.position.set(0, MOON_Y, -125);
     this.group.add(this.clouds);
   }
 

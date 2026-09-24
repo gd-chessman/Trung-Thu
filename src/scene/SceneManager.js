@@ -16,6 +16,12 @@ import { WaterSurface } from '../objects/WaterSurface.js';
 import { ParticleSky } from '../objects/ParticleSky.js';
 import { googleSheetService } from '../services/GoogleSheetService.js';
 import { getPerformanceProfile, getPixelRatio } from '../utils/performance.js';
+import {
+  JADE_RABBIT_Y,
+  MOONCAKE_Y,
+  SKY_LANTERNS_Y,
+  STAR_LANTERN_Y
+} from './sceneLayout.js';
 
 export class SceneManager {
   constructor(canvasElement) {
@@ -83,16 +89,17 @@ export class SceneManager {
     this.moon = new Moon(this.scene);
 
     // 2. Traditional Vietnamese 5-pointed Star Lantern
-    this.starLantern = new StarLantern(this.scene, new THREE.Vector3(-12, 7.2, 0));
+    this.starLantern = new StarLantern(this.scene, new THREE.Vector3(-12, STAR_LANTERN_Y, 0));
 
     // 3. Artisanal Mooncake & Tea Set
-    this.mooncake = new Mooncake(this.scene, new THREE.Vector3(12, 5.2, 0));
+    this.mooncake = new Mooncake(this.scene, new THREE.Vector3(12, MOONCAKE_Y, 0));
 
     // 4. Jade Rabbit on cloud
-    this.jadeRabbit = new JadeRabbit(this.scene, new THREE.Vector3(0, 21, -35));
+    this.jadeRabbit = new JadeRabbit(this.scene, new THREE.Vector3(0, JADE_RABBIT_Y, -35));
 
     // 5. Sea of Floating Sky Lanterns with wish & blessing system
     this.skyLanterns = new SkyLanterns(this.scene, this.perf);
+    this.skyLanterns.group.position.y = SKY_LANTERNS_Y;
 
     // 6. Calm reflective water surface with lotus flower lanterns
     this.waterSurface = new WaterSurface(this.scene, -11, this.perf);

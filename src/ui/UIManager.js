@@ -9,6 +9,7 @@ import { TriviaModal } from './TriviaModal.js';
 import { LeaderboardModal } from './LeaderboardModal.js';
 import { LanternDetailModal } from './LanternDetailModal.js';
 import { audioManager } from '../audio/AudioManager.js';
+import { readMusicEnabledPreference, saveMusicEnabledPreference } from '../utils/visitor.js';
 
 export class UIManager {
   constructor(sceneManager) {
@@ -46,9 +47,20 @@ export class UIManager {
 
   initHUD() {
     // 1. Audio Toggle Button & Default Music Playback
-    this.musicWanted = true;
+    this.musicWanted = readMusicEnabledPreference();
     const audioBtn = document.getElementById('btn-audio-toggle');
     const audioText = audioBtn.querySelector('.btn-text');
+
+    const syncAudioToggleUi = () => {
+      if (this.musicWanted) {
+        audioBtn.classList.add('active');
+        if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Bật';
+      } else {
+        audioBtn.classList.remove('active');
+        if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Tắt';
+      }
+    };
+    syncAudioToggleUi();
 
     const startDefaultMusic = (delayFirstNoteMs = 0) => {
       if (this.musicWanted && !audioManager.isPlayingMusic) {
@@ -77,15 +89,15 @@ export class UIManager {
       audioManager.unlockFromUserGesture();
       if (this.musicWanted) {
         this.musicWanted = false;
+        saveMusicEnabledPreference(false);
         audioManager.stopMusic();
-        audioBtn.classList.remove('active');
-        if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Tắt';
+        syncAudioToggleUi();
         this.showToast('🔇 Đã tắt âm thanh');
       } else {
         this.musicWanted = true;
+        saveMusicEnabledPreference(true);
         audioManager.startMusic();
-        audioBtn.classList.add('active');
-        if (audioText) audioText.textContent = 'Nhạc Cổ Truyền: Bật';
+        syncAudioToggleUi();
         this.showToast('🎶 Đang phát giai điệu dân tộc Đàn Tranh Trung Thu');
       }
     });

@@ -9,19 +9,31 @@ export function computeRelativeWishRanks(wishIds, getHeartCount) {
     count: Math.max(0, Number(getHeartCount(id)) || 0)
   }));
 
-  const max = Math.max(...entries.map((e) => e.count));
-  const min = Math.min(...entries.map((e) => e.count));
+  const uniqueCounts = [...new Set(entries.map((e) => e.count))].sort((a, b) => b - a);
+
+  if (uniqueCounts.length === 1) {
+    entries.forEach(({ id }) => rankById.set(id, 1));
+    return rankById;
+  }
+
+  const rankForCount = new Map();
+  if (uniqueCounts.length === 2) {
+    rankForCount.set(uniqueCounts[0], 1);
+    rankForCount.set(uniqueCounts[1], 2);
+  } else {
+    uniqueCounts.forEach((count, index) => {
+      if (index === 0) {
+        rankForCount.set(count, 1);
+      } else if (index === uniqueCounts.length - 1) {
+        rankForCount.set(count, 3);
+      } else {
+        rankForCount.set(count, 2);
+      }
+    });
+  }
 
   entries.forEach(({ id, count }) => {
-    if (max === min) {
-      rankById.set(id, 1);
-    } else if (count === max) {
-      rankById.set(id, 1);
-    } else if (count === min) {
-      rankById.set(id, 3);
-    } else {
-      rankById.set(id, 2);
-    }
+    rankById.set(id, rankForCount.get(count) ?? 3);
   });
 
   return rankById;

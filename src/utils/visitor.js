@@ -1,5 +1,26 @@
 const VISITOR_ID_KEY = 'midautumn_visitor_id';
 const LAST_AUTHOR_KEY = 'midautumn_last_author';
+const MUSIC_ENABLED_KEY = 'midautumn_music_enabled';
+
+/** Nhạc nền bật/tắt (mặc định bật). */
+export function readMusicEnabledPreference() {
+  try {
+    const v = localStorage.getItem(MUSIC_ENABLED_KEY);
+    if (v === '0') return false;
+    if (v === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+export function saveMusicEnabledPreference(enabled) {
+  try {
+    localStorage.setItem(MUSIC_ENABLED_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
 
 export function getVisitorId() {
   try {

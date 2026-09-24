@@ -29,6 +29,7 @@ export class LanternDetailModal {
     this.currentData = null;
     this.currentWishId = null;
     this.heartCount = 0;
+    this._detailLoadGen = 0;
 
     this.initEvents();
   }
@@ -106,9 +107,16 @@ export class LanternDetailModal {
 
       if (this.btnHeart) this.btnHeart.style.display = 'inline-flex';
       this.currentWishId = googleSheetService.resolveWishIdFromLantern(lanternData);
+      this.heartCount = googleSheetService.getHeartCount(this.currentWishId);
+      if (this.heartCountEl) this.heartCountEl.textContent = this.heartCount;
+      this.updateWishRankBadge();
+      const loadGen = ++this._detailLoadGen;
+      const wishIdForLoad = this.currentWishId;
       googleSheetService.ensureLikesLoaded().then(() => {
-        if (this.currentData !== lanternData) return;
-        this.heartCount = googleSheetService.getHeartCount(this.currentWishId);
+        if (loadGen !== this._detailLoadGen) return;
+        if (this.currentWishId !== wishIdForLoad) return;
+        const count = googleSheetService.getHeartCount(wishIdForLoad);
+        this.heartCount = Math.max(this.heartCount, count);
         if (this.heartCountEl) this.heartCountEl.textContent = this.heartCount;
         this.updateWishRankBadge();
       });

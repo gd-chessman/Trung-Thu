@@ -13,14 +13,24 @@ import {
   resolvePublicIp
 } from '../utils/visitor.js';
 import { computeRelativeWishRanks } from '../utils/wishRank.js';
+import {
+  acknowledgeLikeBatch,
+  incrementLike,
+  ledgerEntriesToServerRows,
+  listPendingFlushEntries,
+  loadLikeLedger,
+  mergeGvizLikesIntoLedger,
+  parseLikeQty,
+  saveLikeLedger,
+  totalHeartsForWish,
+  hasVisitorLikedWish as ledgerVisitorLiked
+} from './likeLedger.js';
 
 const APPS_SCRIPT_URL_KEY = 'midautumn_apps_script_url';
-const LIKE_OUTBOX_KEY = 'midautumn_like_outbox';
-/** @deprecated — migrate sang LIKE_OUTBOX_KEY */
-const PENDING_LIKES_KEY = 'midautumn_pending_likes';
-const LIKE_SYNC_MAX_ATTEMPTS = 4;
+const LIKE_SYNC_MAX_ATTEMPTS = 2;
 const LIKE_SYNC_RETRY_MS = 800;
-const LIKE_FLUSH_DEBOUNCE_MS = 450;
+const LIKE_FLUSH_DEBOUNCE_MS = 350;
+const LIKE_FLUSH_MAX_BATCH = 30;
 
 const HEADER_LABELS = new Set([
   'thời gian',
@@ -108,10 +118,10 @@ function cellValue(cell) {
   return cell.f != null && cell.f !== '' ? String(cell.f) : String(cell.v ?? '');
 }
 
-function parseLikeQuantity(raw) {
-  const n = Number(String(raw ?? '').replace(/,/g, '').trim());
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return Math.floor(n);
+/** Cột Số lượng trên Sheet (gviz) — ô trống coi như 1 dòng tim. */
+function parseGvizLikeQuantity(raw) {
+  const n = parseLikeQty(raw);
+  return n > 0 ? n : 1;
 }
 
 export class GoogleSheetService {
@@ -129,10 +139,13 @@ export class GoogleSheetService {
     this._rankByWishId = new Map();
     this._activeWishIds = [];
     this._lastServerLikeRows = [];
+    this._likeLedger = loadLikeLedger();
     this._likeSyncQueue = Promise.resolve();
     this._loadLikesPromise = null;
     this._likeFlushTimer = null;
-    this._migrateLegacyPendingLikes();
+    this._flushRunning = false;
+    this._flushAgain = false;
+    this._syncCountsFromLedger();
   }
 
   setActiveWishIds(ids) {
@@ -197,240 +210,137 @@ export class GoogleSheetService {
 
   getHeartCount(wishId) {
     if (!wishId) return 0;
-    return this.heartCounts.get(wishId) || 0;
+    return totalHeartsForWish(this._likeLedger, wishId);
   }
 
   hasVisitorLiked(wishId) {
-    return this.likedByVisitor.has(wishId);
+    return ledgerVisitorLiked(this._likeLedger, getVisitorId(), wishId);
   }
 
-  _readLikeOutbox() {
-    try {
-      const raw = localStorage.getItem(LIKE_OUTBOX_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((e) => e?.wishId && e?.likerId);
-    } catch {
-      return [];
-    }
+  _persistLikeLedger() {
+    saveLikeLedger(this._likeLedger);
   }
 
-  _writeLikeOutbox(entries) {
-    try {
-      const list = entries.filter((e) => e?.wishId && e?.likerId && (e.pendingCount || 0) > 0);
-      if (!list.length) {
-        localStorage.removeItem(LIKE_OUTBOX_KEY);
-        return;
+  /** Cập nhật heartCounts + hạng từ sổ tim (nguồn tính duy nhất). */
+  _syncCountsFromLedger() {
+    this.heartCounts.clear();
+    this.likedByVisitor.clear();
+    const visitorId = getVisitorId();
+    const wishIds = new Set();
+
+    this._likeLedger.forEach((entry) => {
+      wishIds.add(entry.wishId);
+      if (entry.likerId === visitorId && (entry.pending > 0 || entry.serverQty > 0)) {
+        this.likedByVisitor.add(entry.wishId);
       }
-      localStorage.setItem(LIKE_OUTBOX_KEY, JSON.stringify(list.slice(-250)));
-    } catch {
-      /* quota */
-    }
-  }
+    });
 
-  _outboxKey(wishId, likerId) {
-    return `${String(wishId).trim()}\u0001${String(likerId).trim()}`;
-  }
+    wishIds.forEach((wishId) => {
+      const total = totalHeartsForWish(this._likeLedger, wishId);
+      if (total > 0) this.heartCounts.set(wishId, total);
+    });
 
-  _findServerRowQty_(wishId, likerId) {
-    const wid = String(wishId || '').trim();
-    const lid = String(likerId || '').trim();
-    const row = (this._lastServerLikeRows || []).find(
-      (r) => String(r.wishId).trim() === wid && String(r.likerId).trim() === lid
-    );
-    return row ? parseLikeQuantity(row.quantity) : 0;
-  }
-
-  /**
-   * Tránh cộng trùng: Sheet đã có tim mà outbox vẫn pending (reload / flush dở).
-   * confirmedRowQty = Số lượng trên Sheet đã “tính” cho cặp wish+người tim.
-   */
-  _reconcileOutboxWithSheet() {
-    const outbox = this._readLikeOutbox();
-    if (!outbox.length) return;
-
-    let changed = false;
-    for (const entry of outbox) {
-      let confirmed = Math.floor(Number(entry.confirmedRowQty) || 0);
-      let pending = Math.floor(Number(entry.pendingCount) || 0);
-      const serverQty = this._findServerRowQty_(entry.wishId, entry.likerId);
-
-      if (serverQty > confirmed) {
-        const appliedOnSheet = serverQty - confirmed;
-        pending = Math.max(0, pending - appliedOnSheet);
-        confirmed = serverQty;
-        changed = true;
-      }
-
-      entry.confirmedRowQty = confirmed;
-      entry.pendingCount = pending;
-    }
-
-    if (changed) {
-      this._writeLikeOutbox(outbox);
-    }
-  }
-
-  /** Gộp format cũ (từng lần bấm) → outbox pendingCount */
-  _migrateLegacyPendingLikes() {
-    try {
-      const raw = localStorage.getItem(PENDING_LIKES_KEY);
-      if (!raw) return;
-      const legacy = JSON.parse(raw);
-      if (!Array.isArray(legacy) || !legacy.length) {
-        localStorage.removeItem(PENDING_LIKES_KEY);
-        return;
-      }
-
-      const outbox = this._readLikeOutbox();
-      const byKey = new Map(outbox.map((e) => [this._outboxKey(e.wishId, e.likerId), { ...e }]));
-
-      legacy.forEach((row) => {
-        if (!row?.wishId || !row?.likerId) return;
-        const key = this._outboxKey(row.wishId, row.likerId);
-        const existing = byKey.get(key);
-        if (existing) {
-          existing.pendingCount = (existing.pendingCount || 0) + 1;
-          if (row.timestamp) existing.timestamp = row.timestamp;
-        } else {
-          byKey.set(key, {
-            wishId: String(row.wishId).trim(),
-            likerId: String(row.likerId).trim(),
-            likerName: row.likerName || '',
-            device: row.device || '',
-            timestamp: row.timestamp || '',
-            pendingCount: 1
-          });
-        }
-      });
-
-      this._writeLikeOutbox([...byKey.values()]);
-      localStorage.removeItem(PENDING_LIKES_KEY);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  /** Mỗi lần bấm tim: +1 pending trong localStorage (gộp cùng wish + cùng người). */
-  _enqueueLikeToOutbox(wishId) {
-    const likerId = getVisitorId();
-    const list = this._readLikeOutbox();
-    const key = this._outboxKey(wishId, likerId);
-    let entry = list.find((e) => this._outboxKey(e.wishId, e.likerId) === key);
-    const now = new Date().toLocaleString('vi-VN');
-
-    if (entry) {
-      entry.pendingCount = (entry.pendingCount || 0) + 1;
-      entry.timestamp = now;
-      entry.likerName = getLikerDisplayName();
-      entry.device = getClientDeviceInfo();
-    } else {
-      entry = {
-        wishId: String(wishId).trim(),
-        likerId,
-        likerName: getLikerDisplayName(),
-        device: getClientDeviceInfo(),
-        timestamp: now,
-        pendingCount: 1,
-        confirmedRowQty: this._findServerRowQty_(wishId, likerId)
-      };
-      list.push(entry);
-    }
-
-    this._writeLikeOutbox(list);
+    this._lastServerLikeRows = ledgerEntriesToServerRows(this._likeLedger);
+    this.recomputeWishRanks();
   }
 
   _scheduleLikeFlush() {
     if (!this.getAppsScriptUrl()) return;
-    if (this._likeFlushTimer) {
-      clearTimeout(this._likeFlushTimer);
-    }
+    if (this._likeFlushTimer) clearTimeout(this._likeFlushTimer);
     this._likeFlushTimer = setTimeout(() => {
       this._likeFlushTimer = null;
       this._likeSyncQueue = this._likeSyncQueue
-        .then(() => this._flushLikeOutbox())
-        .catch((err) => {
-          console.warn('Like outbox flush error:', err);
-        });
+        .then(() => this._flushLikeLedger())
+        .catch((err) => console.warn('Like flush error:', err));
     }, LIKE_FLUSH_DEBOUNCE_MS);
   }
 
-  _flushLikeOutboxNow() {
-    if (!this.getAppsScriptUrl()) return;
-    this._likeSyncQueue = this._likeSyncQueue
-      .then(() => this._flushLikeOutbox())
-      .catch((err) => {
-        console.warn('Like outbox flush error:', err);
-      });
+  async _postLikeBatch_(entry, ip, addCount) {
+    const payload = {
+      action: 'like',
+      wishId: entry.wishId,
+      likerId: entry.likerId,
+      likerName: entry.likerName,
+      timestamp: entry.timestamp,
+      device: entry.device,
+      ip,
+      addCount
+    };
+
+    let sheetResult = { ok: false, reason: 'not_attempted' };
+    for (let attempt = 1; attempt <= LIKE_SYNC_MAX_ATTEMPTS; attempt++) {
+      if (attempt > 1) {
+        await new Promise((r) => setTimeout(r, LIKE_SYNC_RETRY_MS * attempt));
+      }
+      sheetResult = await this.postToAppsScript(payload, { requireJsonResponse: true });
+      if (sheetResult.ok) break;
+      if (sheetResult.reason === 'missing_apps_script_url') break;
+    }
+    return sheetResult;
   }
 
-  async _flushLikeOutbox() {
+  async _flushLikeLedger() {
     if (!this.getAppsScriptUrl()) return;
-
-    const outbox = this._readLikeOutbox();
-    if (!outbox.length) return;
-
-    const ip = await resolvePublicIp();
-
-    for (const entry of outbox) {
-      const toSend = Math.floor(Number(entry.pendingCount) || 0);
-      if (toSend < 1) continue;
-
-      const payload = {
-        action: 'like',
-        wishId: entry.wishId,
-        likerId: entry.likerId,
-        likerName: entry.likerName,
-        timestamp: entry.timestamp,
-        device: entry.device,
-        ip,
-        addCount: toSend
-      };
-
-      let sheetResult = { ok: false, reason: 'not_attempted' };
-      for (let attempt = 1; attempt <= LIKE_SYNC_MAX_ATTEMPTS; attempt++) {
-        if (attempt > 1) {
-          await new Promise((resolve) => setTimeout(resolve, LIKE_SYNC_RETRY_MS * attempt));
-        }
-        sheetResult = await this.postToAppsScript(payload, { requireJsonResponse: true });
-        if (sheetResult.ok) break;
-        if (sheetResult.reason === 'missing_apps_script_url') break;
-      }
-
-      if (!sheetResult.ok) {
-        console.warn('Tim chưa đẩy Sheet (còn trong localStorage):', entry.wishId, sheetResult.reason);
-        continue;
-      }
-
-      entry.pendingCount = Math.max(0, (entry.pendingCount || 0) - toSend);
-      if (sheetResult.data && typeof sheetResult.data.quantity === 'number') {
-        entry.confirmedRowQty = Math.floor(sheetResult.data.quantity);
-      } else {
-        entry.confirmedRowQty = (entry.confirmedRowQty || 0) + toSend;
-      }
-
-      this._upsertLocalServerLikeRow(
-        {
-          wishId: entry.wishId,
-          likerId: entry.likerId,
-          likerName: entry.likerName,
-          timestamp: entry.timestamp,
-          device: entry.device,
-          ip,
-          updatedAt: entry.timestamp
-        },
-        toSend
-      );
-
-      if (sheetResult.data && typeof sheetResult.data.count === 'number') {
-        this.heartCounts.set(entry.wishId, sheetResult.data.count);
-      }
-
-      this._writeLikeOutbox(outbox);
+    if (this._flushRunning) {
+      this._flushAgain = true;
+      return;
     }
 
-    this._recountHeartTotals();
+    this._flushRunning = true;
+    try {
+      const pendingEntries = listPendingFlushEntries(this._likeLedger);
+      if (!pendingEntries.length) return;
+
+      const ip = await resolvePublicIp();
+
+      for (const entry of pendingEntries) {
+        let remaining = parseLikeQty(entry.pending);
+        let guard = 0;
+
+        while (remaining > 0 && guard < 50) {
+          guard += 1;
+          const batch = Math.min(remaining, LIKE_FLUSH_MAX_BATCH);
+          const beforeQty = parseLikeQty(entry.serverQty);
+
+          let sheetResult = await this._postLikeBatch_(entry, ip, batch);
+          if (!sheetResult.ok) {
+            console.warn('Tim chưa lên Sheet (giữ trong localStorage):', entry.wishId, sheetResult.reason);
+            break;
+          }
+
+          const serverQty =
+            sheetResult.data && typeof sheetResult.data.quantity === 'number'
+              ? sheetResult.data.quantity
+              : undefined;
+          const ack = acknowledgeLikeBatch(
+            this._likeLedger,
+            entry.wishId,
+            entry.likerId,
+            beforeQty,
+            batch,
+            serverQty
+          );
+
+          if (ack < 1) {
+            console.warn('Tim POST ok nhưng không ack được — kiểm tra Code.gs:', entry.wishId);
+            break;
+          }
+
+          this._persistLikeLedger();
+          remaining = parseLikeQty(entry.pending);
+        }
+      }
+
+      this._syncCountsFromLedger();
+    } finally {
+      this._flushRunning = false;
+      if (this._flushAgain || listPendingFlushEntries(this._likeLedger).length > 0) {
+        this._flushAgain = false;
+        this._likeSyncQueue = this._likeSyncQueue
+          .then(() => this._flushLikeLedger())
+          .catch((err) => console.warn('Like flush error:', err));
+      }
+    }
   }
 
   _bootstrapSessionLikes() {
@@ -439,68 +349,7 @@ export class GoogleSheetService {
       return;
     }
     this._sessionLikesBootstrapped = true;
-    this._recountHeartTotals();
-  }
-
-  _recountHeartTotals() {
-    this.heartCounts.clear();
-    this.likedByVisitor.clear();
-    const visitorId = getVisitorId();
-
-    (this._lastServerLikeRows || []).forEach((row) => {
-      const wishId = String(row.wishId || '').trim();
-      const likerId = String(row.likerId || '').trim();
-      if (!wishId) return;
-      const qty = parseLikeQuantity(row.quantity);
-      this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + qty);
-      if (likerId && likerId === visitorId) {
-        this.likedByVisitor.add(wishId);
-      }
-    });
-
-    this._readLikeOutbox().forEach((entry) => {
-      const wishId = String(entry.wishId || '').trim();
-      const likerId = String(entry.likerId || '').trim();
-      const pending = Math.floor(Number(entry.pendingCount) || 0);
-      if (!wishId || pending < 1) return;
-      this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + pending);
-      if (likerId && likerId === visitorId) {
-        this.likedByVisitor.add(wishId);
-      }
-    });
-
-    this.recomputeWishRanks();
-  }
-
-  _upsertLocalServerLikeRow(row, addCount = 1) {
-    const wishId = String(row.wishId || '').trim();
-    const likerId = String(row.likerId || '').trim();
-    if (!wishId || !likerId) return;
-
-    const existing = this._lastServerLikeRows.find(
-      (r) =>
-        String(r.wishId).trim() === wishId && String(r.likerId).trim() === likerId
-    );
-
-    if (existing) {
-      existing.quantity = parseLikeQuantity(existing.quantity) + addCount;
-      existing.updatedAt = row.updatedAt || row.timestamp || existing.updatedAt;
-      if (row.likerName) existing.likerName = row.likerName;
-      if (row.device) existing.device = row.device;
-      if (row.ip) existing.ip = row.ip;
-    } else {
-      this._lastServerLikeRows.push({
-        wishId,
-        likerId,
-        likerName: row.likerName || '',
-        timestamp: row.timestamp || '',
-        device: row.device || '',
-        ip: row.ip || '',
-        quantity: addCount,
-        updatedAt: row.updatedAt || row.timestamp || '',
-        syncedToSheet: true
-      });
-    }
+    this._syncCountsFromLedger();
   }
 
   /**
@@ -518,7 +367,7 @@ export class GoogleSheetService {
   }
 
   async _loadLikesFromSheet() {
-    let serverRows = [];
+    const gvizRows = [];
 
     if (this.likesGvizUrl) {
       try {
@@ -534,16 +383,10 @@ export class GoogleSheetService {
             .toLowerCase();
           if (HEADER_LABELS.has(first)) return;
 
-          serverRows.push({
-            timestamp: cellValue(c[0]),
+          gvizRows.push({
             wishId: cellValue(c[1]),
             likerId: cellValue(c[2]),
-            likerName: cellValue(c[3]),
-            device: cellValue(c[4]),
-            ip: cellValue(c[5]),
-            quantity: parseLikeQuantity(cellValue(c[6])),
-            updatedAt: cellValue(c[7]) || cellValue(c[0]),
-            syncedToSheet: true
+            quantity: parseGvizLikeQuantity(cellValue(c[6]))
           });
         });
       } catch (err) {
@@ -551,14 +394,16 @@ export class GoogleSheetService {
       }
     }
 
-    this._lastServerLikeRows = serverRows;
-    this._reconcileOutboxWithSheet();
-    this._recountHeartTotals();
+    mergeGvizLikesIntoLedger(this._likeLedger, gvizRows);
+    this._persistLikeLedger();
+    this._syncCountsFromLedger();
     this._likesLoaded = true;
     this._sessionLikesBootstrapped = true;
-    await this._likeSyncQueue.then(() => this._flushLikeOutbox());
-    this._reconcileOutboxWithSheet();
-    this._recountHeartTotals();
+
+    this._likeSyncQueue = this._likeSyncQueue
+      .then(() => this._flushLikeLedger())
+      .then(() => this._syncCountsFromLedger())
+      .catch((err) => console.warn('Like flush error:', err));
   }
 
   /** Gọi sớm để lấy IP không chặn lúc bấm tim. */
@@ -643,8 +488,13 @@ export class GoogleSheetService {
     }
 
     this._bootstrapSessionLikes();
-    this._enqueueLikeToOutbox(wishId);
-    this._recountHeartTotals();
+    incrementLike(this._likeLedger, wishId, getVisitorId(), {
+      likerName: getLikerDisplayName(),
+      device: getClientDeviceInfo(),
+      timestamp: new Date().toLocaleString('vi-VN')
+    });
+    this._persistLikeLedger();
+    this._syncCountsFromLedger();
     this._scheduleLikeFlush();
 
     return {

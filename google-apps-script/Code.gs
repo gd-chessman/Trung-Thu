@@ -154,8 +154,11 @@ function appendLikeRow(payload) {
     ]);
   }
 
-  const rowQty =
-    rowIdx > 0 ? Number(sheet.getRange(rowIdx, 7).getValue()) || 1 : 1;
+  const finalRowIdx = findLikeRowIndex_(sheet, wishId, likerId);
+  let rowQty = Number(sheet.getRange(finalRowIdx, 7).getValue());
+  if (!rowQty || rowQty < 1) {
+    rowQty = addCount;
+  }
 
   return {
     ok: true,

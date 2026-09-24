@@ -422,6 +422,13 @@ export class SkyLanterns {
       if (lantern.light) {
         lantern.light.intensity = 2.8 + Math.sin(this.time * 18 + lantern.phase) * 0.6;
       }
+
+      const p = lantern.mesh.position;
+      if (p.y > 88 || p.z < -125) {
+        p.y = -14 - Math.random() * 10;
+        p.x = (Math.random() - 0.5) * 140;
+        p.z = -20 - Math.random() * 55;
+      }
     });
   }
 }

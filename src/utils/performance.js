@@ -4,8 +4,8 @@
 
 const PROFILES = {
   low: {
-    pixelRatioMax: 1,
-    antialias: false,
+    pixelRatioMax: 2,
+    antialias: true,
     skyLanternCount: 22,
     wishLanternLights: false,
     starCount: 900,
@@ -57,9 +57,11 @@ function detectTier() {
   const mobile = coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
   const cores = navigator.hardwareConcurrency || 4;
   const memory = navigator.deviceMemory || 4;
-  const dpr = window.devicePixelRatio || 1;
 
-  if (mobile || cores <= 4 || memory <= 4 || dpr >= 3) {
+  if (mobile) {
+    if (cores >= 6 && (memory >= 4 || memory === undefined)) {
+      return 'medium';
+    }
     return 'low';
   }
   if (cores >= 8 && memory >= 8) {
@@ -79,6 +81,13 @@ export function getPerformanceProfile() {
 }
 
 export function getPixelRatio() {
+  const dpr = window.devicePixelRatio || 1;
   const { pixelRatioMax } = getPerformanceProfile();
-  return Math.min(window.devicePixelRatio || 1, pixelRatioMax);
+  const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+  const cap = pixelRatioMax;
+  const ratio = Math.min(dpr, cap);
+  if (coarse && ratio < 1.5 && dpr >= 1.5) {
+    return Math.min(dpr, cap, 2);
+  }
+  return ratio;
 }

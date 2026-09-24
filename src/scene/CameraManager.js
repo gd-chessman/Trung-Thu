@@ -6,7 +6,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import gsap from 'gsap';
-import { SCENE_Y_LIFT } from './sceneLayout.js';
+import { CAM_POS, CAM_TARGET } from './sceneLayout.js';
+
+function vec3({ x, y, z }) {
+  return new THREE.Vector3(x, y, z);
+}
 
 export class CameraManager {
   constructor(renderer, domElement) {
@@ -22,27 +26,25 @@ export class CameraManager {
     this.controls.dampingFactor = 0.05;
     this.controls.maxDistance = 120;
     this.controls.minDistance = 3;
-    this.controls.maxPolarAngle = Math.PI / 2 + 0.08; // don't go too far under ground
+    this.controls.maxPolarAngle = Math.PI / 2 + 0.08;
     this.controls.minPolarAngle = 0.1;
 
-    // Target Y giữ gần bản gốc — chỉ nâng camera pos nhẹ; vật thể đã +SCENE_Y_LIFT nên hiện cao hơn trong khung hình
-    const lift = SCENE_Y_LIFT;
     this.presets = {
       overview: {
-        pos: new THREE.Vector3(0, 11.5 + lift * 0.35, 54),
-        target: new THREE.Vector3(0, 24, -40)
+        pos: vec3(CAM_POS.overview),
+        target: vec3(CAM_TARGET.overview)
       },
       starlantern: {
-        pos: new THREE.Vector3(-11, 8.3 + lift * 0.25, 15),
-        target: new THREE.Vector3(-12, 7.2, 0)
+        pos: vec3(CAM_POS.starlantern),
+        target: vec3(CAM_TARGET.starlantern)
       },
       mooncake: {
-        pos: new THREE.Vector3(13, 10.2 + lift * 0.25, 11),
-        target: new THREE.Vector3(12, 5.8, 0)
+        pos: vec3(CAM_POS.mooncake),
+        target: vec3(CAM_TARGET.mooncake)
       },
       rabbit: {
-        pos: new THREE.Vector3(0, 25.5 + lift * 0.2, -17),
-        target: new THREE.Vector3(0, 25.0, -35)
+        pos: vec3(CAM_POS.rabbit),
+        target: vec3(CAM_TARGET.rabbit)
       }
     };
 
@@ -67,7 +69,6 @@ export class CameraManager {
     this.currentPreset = name;
     this.controls.enabled = false;
 
-    // Animate camera position
     gsap.to(this.camera.position, {
       x: p.pos.x,
       y: p.pos.y,
@@ -76,7 +77,6 @@ export class CameraManager {
       ease: 'power2.inOut'
     });
 
-    // Animate controls target
     gsap.to(this.controls.target, {
       x: p.target.x,
       y: p.target.y,

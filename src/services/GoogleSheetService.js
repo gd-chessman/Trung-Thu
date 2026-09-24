@@ -15,6 +15,9 @@ import {
 import { computeRelativeWishRanks } from '../utils/wishRank.js';
 
 const APPS_SCRIPT_URL_KEY = 'midautumn_apps_script_url';
+const PENDING_LIKES_KEY = 'midautumn_pending_likes';
+const LIKE_SYNC_MAX_ATTEMPTS = 4;
+const LIKE_SYNC_RETRY_MS = 800;
 
 const HEADER_LABELS = new Set([
   'thời gian',
@@ -127,6 +130,7 @@ export class GoogleSheetService {
     this._likeSeq = 0;
     this._likeSyncQueue = Promise.resolve();
     this._loadLikesPromise = null;
+    this._restorePendingLikesFromStorage();
   }
 
   setActiveWishIds(ids) {
@@ -196,6 +200,82 @@ export class GoogleSheetService {
 
   hasVisitorLiked(wishId) {
     return this.likedByVisitor.has(wishId);
+  }
+
+  _readPendingLikesStorage() {
+    try {
+      const raw = localStorage.getItem(PENDING_LIKES_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  _writePendingLikesStorage(records) {
+    try {
+      if (!records.length) {
+        localStorage.removeItem(PENDING_LIKES_KEY);
+        return;
+      }
+      localStorage.setItem(PENDING_LIKES_KEY, JSON.stringify(records.slice(-400)));
+    } catch {
+      /* ignore quota */
+    }
+  }
+
+  _persistPendingLike(record) {
+    if (!record?.likeId) return;
+    const list = this._readPendingLikesStorage();
+    if (list.some((r) => r.likeId === record.likeId)) return;
+    list.push({
+      likeId: record.likeId,
+      wishId: record.wishId,
+      likerId: record.likerId,
+      likerName: record.likerName,
+      timestamp: record.timestamp,
+      device: record.device,
+      ip: record.ip || ''
+    });
+    this._writePendingLikesStorage(list);
+  }
+
+  _removePendingLike(likeId) {
+    if (!likeId) return;
+    const list = this._readPendingLikesStorage().filter((r) => r.likeId !== likeId);
+    this._writePendingLikesStorage(list);
+  }
+
+  _restorePendingLikesFromStorage() {
+    const pending = this._readPendingLikesStorage();
+    pending.forEach((p) => {
+      if (!p?.likeId || !p.wishId) return;
+      if (this.sessionLikeRecords.some((r) => r.likeId === p.likeId)) return;
+      this.sessionLikeRecords.push({
+        likeId: p.likeId,
+        wishId: p.wishId,
+        likerId: p.likerId,
+        likerName: p.likerName || '',
+        timestamp: p.timestamp || '',
+        device: p.device || '',
+        ip: p.ip || '',
+        syncedToSheet: false
+      });
+    });
+  }
+
+  _enqueueUnsyncedLikes() {
+    if (!this.getAppsScriptUrl()) return;
+    this.sessionLikeRecords
+      .filter((r) => r.likeId && !r.syncedToSheet)
+      .forEach((record) => {
+        this._likeSyncQueue = this._likeSyncQueue
+          .then(() => this._syncLikeInBackground(record))
+          .catch((err) => {
+            console.warn('Like sync queue error:', err);
+          });
+      });
   }
 
   _bootstrapSessionLikes() {
@@ -321,6 +401,7 @@ export class GoogleSheetService {
     this._recountHeartTotals();
     this._likesLoaded = true;
     this._sessionLikesBootstrapped = true;
+    this._enqueueUnsyncedLikes();
   }
 
   /** Gọi sớm để lấy IP không chặn lúc bấm tim. */
@@ -336,8 +417,10 @@ export class GoogleSheetService {
 
   /**
    * POST JSON to Apps Script (text/plain avoids CORS preflight issues).
+   * @param {{ requireJsonResponse?: boolean }} options — tim: bắt buộc JSON để tránh báo thành công giả (no-cors).
    */
-  async postToAppsScript(payload) {
+  async postToAppsScript(payload, options = {}) {
+    const requireJson = Boolean(options.requireJsonResponse);
     const url = this.getAppsScriptUrl();
     if (!url) {
       return { ok: false, reason: 'missing_apps_script_url' };
@@ -360,8 +443,19 @@ export class GoogleSheetService {
         }
         return { ok: true, data };
       }
+
+      if (requireJson) {
+        return { ok: false, reason: `http_${res.status}` };
+      }
     } catch (err) {
+      if (requireJson) {
+        return { ok: false, reason: String(err) };
+      }
       console.warn('CORS POST failed, retrying no-cors:', err);
+    }
+
+    if (requireJson) {
+      return { ok: false, reason: 'like_requires_json_response' };
     }
 
     try {
@@ -427,6 +521,8 @@ export class GoogleSheetService {
   }
 
   async _syncLikeInBackground(record) {
+    if (record.syncedToSheet) return;
+
     const { likeId, wishId, likerId, likerName, timestamp, device } = record;
     try {
       const ip = await resolvePublicIp();
@@ -437,7 +533,7 @@ export class GoogleSheetService {
         this.sessionLikeRecords[idx] = { ...this.sessionLikeRecords[idx], ip };
       }
 
-      const sheetResult = await this.postToAppsScript({
+      const payload = {
         action: 'like',
         wishId,
         likerId,
@@ -445,11 +541,26 @@ export class GoogleSheetService {
         timestamp,
         device,
         ip
-      });
+      };
 
-      if (!sheetResult.ok) return;
+      let sheetResult = { ok: false, reason: 'not_attempted' };
+      for (let attempt = 1; attempt <= LIKE_SYNC_MAX_ATTEMPTS; attempt++) {
+        if (attempt > 1) {
+          await new Promise((resolve) => setTimeout(resolve, LIKE_SYNC_RETRY_MS * attempt));
+        }
+        sheetResult = await this.postToAppsScript(payload, { requireJsonResponse: true });
+        if (sheetResult.ok) break;
+        if (sheetResult.reason === 'missing_apps_script_url') break;
+      }
+
+      if (!sheetResult.ok) {
+        this._persistPendingLike(record);
+        console.warn('Like chưa ghi Sheet:', wishId, sheetResult.reason);
+        return;
+      }
 
       record.syncedToSheet = true;
+      this._removePendingLike(likeId);
       if (idx !== -1) {
         this.sessionLikeRecords[idx] = {
           ...this.sessionLikeRecords[idx],
@@ -481,6 +592,7 @@ export class GoogleSheetService {
         this._recountHeartTotals();
       }
     } catch (err) {
+      this._persistPendingLike(record);
       console.warn('Background like sync failed:', err);
     }
   }

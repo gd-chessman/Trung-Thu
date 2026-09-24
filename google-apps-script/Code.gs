@@ -124,6 +124,8 @@ function appendLikeRow(payload) {
     throw new Error('Thiếu wishId hoặc likerId');
   }
 
+  var addCount = Math.max(1, Math.floor(Number(payload.addCount) || 1));
+
   const now =
     payload.timestamp ||
     Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
@@ -134,7 +136,7 @@ function appendLikeRow(payload) {
     const qtyCell = sheet.getRange(rowIdx, 7);
     let qty = Number(qtyCell.getValue());
     if (!qty || qty < 1) qty = 1;
-    qtyCell.setValue(qty + 1);
+    qtyCell.setValue(qty + addCount);
     sheet.getRange(rowIdx, 8).setValue(now);
     if (payload.likerName) sheet.getRange(rowIdx, 4).setValue(payload.likerName);
     if (payload.device) sheet.getRange(rowIdx, 5).setValue(payload.device);
@@ -147,7 +149,7 @@ function appendLikeRow(payload) {
       payload.likerName || '',
       payload.device || '',
       payload.ip || '',
-      1,
+      addCount,
       now
     ]);
   }

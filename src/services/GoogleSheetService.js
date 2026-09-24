@@ -15,9 +15,12 @@ import {
 import { computeRelativeWishRanks } from '../utils/wishRank.js';
 
 const APPS_SCRIPT_URL_KEY = 'midautumn_apps_script_url';
+const LIKE_OUTBOX_KEY = 'midautumn_like_outbox';
+/** @deprecated — migrate sang LIKE_OUTBOX_KEY */
 const PENDING_LIKES_KEY = 'midautumn_pending_likes';
 const LIKE_SYNC_MAX_ATTEMPTS = 4;
 const LIKE_SYNC_RETRY_MS = 800;
+const LIKE_FLUSH_DEBOUNCE_MS = 450;
 
 const HEADER_LABELS = new Set([
   'thời gian',
@@ -121,16 +124,15 @@ export class GoogleSheetService {
     this.likedByVisitor = new Set();
     this._likesLoaded = false;
     this._sessionLikesBootstrapped = false;
-    /** Chỉ trong phiên tab — không ghi localStorage */
+    /** Điều ước thả trong phiên tab */
     this.sessionWishes = [];
-    this.sessionLikeRecords = [];
     this._rankByWishId = new Map();
     this._activeWishIds = [];
     this._lastServerLikeRows = [];
-    this._likeSeq = 0;
     this._likeSyncQueue = Promise.resolve();
     this._loadLikesPromise = null;
-    this._restorePendingLikesFromStorage();
+    this._likeFlushTimer = null;
+    this._migrateLegacyPendingLikes();
   }
 
   setActiveWishIds(ids) {
@@ -202,80 +204,187 @@ export class GoogleSheetService {
     return this.likedByVisitor.has(wishId);
   }
 
-  _readPendingLikesStorage() {
+  _readLikeOutbox() {
     try {
-      const raw = localStorage.getItem(PENDING_LIKES_KEY);
+      const raw = localStorage.getItem(LIKE_OUTBOX_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((e) => e?.wishId && e?.likerId);
     } catch {
       return [];
     }
   }
 
-  _writePendingLikesStorage(records) {
+  _writeLikeOutbox(entries) {
     try {
-      if (!records.length) {
-        localStorage.removeItem(PENDING_LIKES_KEY);
+      const list = entries.filter((e) => e?.wishId && e?.likerId && (e.pendingCount || 0) > 0);
+      if (!list.length) {
+        localStorage.removeItem(LIKE_OUTBOX_KEY);
         return;
       }
-      localStorage.setItem(PENDING_LIKES_KEY, JSON.stringify(records.slice(-400)));
+      localStorage.setItem(LIKE_OUTBOX_KEY, JSON.stringify(list.slice(-250)));
     } catch {
-      /* ignore quota */
+      /* quota */
     }
   }
 
-  _persistPendingLike(record) {
-    if (!record?.likeId) return;
-    const list = this._readPendingLikesStorage();
-    if (list.some((r) => r.likeId === record.likeId)) return;
-    list.push({
-      likeId: record.likeId,
-      wishId: record.wishId,
-      likerId: record.likerId,
-      likerName: record.likerName,
-      timestamp: record.timestamp,
-      device: record.device,
-      ip: record.ip || ''
-    });
-    this._writePendingLikesStorage(list);
+  _outboxKey(wishId, likerId) {
+    return `${String(wishId).trim()}\u0001${String(likerId).trim()}`;
   }
 
-  _removePendingLike(likeId) {
-    if (!likeId) return;
-    const list = this._readPendingLikesStorage().filter((r) => r.likeId !== likeId);
-    this._writePendingLikesStorage(list);
-  }
+  /** Gộp format cũ (từng lần bấm) → outbox pendingCount */
+  _migrateLegacyPendingLikes() {
+    try {
+      const raw = localStorage.getItem(PENDING_LIKES_KEY);
+      if (!raw) return;
+      const legacy = JSON.parse(raw);
+      if (!Array.isArray(legacy) || !legacy.length) {
+        localStorage.removeItem(PENDING_LIKES_KEY);
+        return;
+      }
 
-  _restorePendingLikesFromStorage() {
-    const pending = this._readPendingLikesStorage();
-    pending.forEach((p) => {
-      if (!p?.likeId || !p.wishId) return;
-      if (this.sessionLikeRecords.some((r) => r.likeId === p.likeId)) return;
-      this.sessionLikeRecords.push({
-        likeId: p.likeId,
-        wishId: p.wishId,
-        likerId: p.likerId,
-        likerName: p.likerName || '',
-        timestamp: p.timestamp || '',
-        device: p.device || '',
-        ip: p.ip || '',
-        syncedToSheet: false
-      });
-    });
-  }
+      const outbox = this._readLikeOutbox();
+      const byKey = new Map(outbox.map((e) => [this._outboxKey(e.wishId, e.likerId), { ...e }]));
 
-  _enqueueUnsyncedLikes() {
-    if (!this.getAppsScriptUrl()) return;
-    this.sessionLikeRecords
-      .filter((r) => r.likeId && !r.syncedToSheet)
-      .forEach((record) => {
-        this._likeSyncQueue = this._likeSyncQueue
-          .then(() => this._syncLikeInBackground(record))
-          .catch((err) => {
-            console.warn('Like sync queue error:', err);
+      legacy.forEach((row) => {
+        if (!row?.wishId || !row?.likerId) return;
+        const key = this._outboxKey(row.wishId, row.likerId);
+        const existing = byKey.get(key);
+        if (existing) {
+          existing.pendingCount = (existing.pendingCount || 0) + 1;
+          if (row.timestamp) existing.timestamp = row.timestamp;
+        } else {
+          byKey.set(key, {
+            wishId: String(row.wishId).trim(),
+            likerId: String(row.likerId).trim(),
+            likerName: row.likerName || '',
+            device: row.device || '',
+            timestamp: row.timestamp || '',
+            pendingCount: 1
           });
+        }
       });
+
+      this._writeLikeOutbox([...byKey.values()]);
+      localStorage.removeItem(PENDING_LIKES_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Mỗi lần bấm tim: +1 pending trong localStorage (gộp cùng wish + cùng người). */
+  _enqueueLikeToOutbox(wishId) {
+    const likerId = getVisitorId();
+    const list = this._readLikeOutbox();
+    const key = this._outboxKey(wishId, likerId);
+    let entry = list.find((e) => this._outboxKey(e.wishId, e.likerId) === key);
+    const now = new Date().toLocaleString('vi-VN');
+
+    if (entry) {
+      entry.pendingCount = (entry.pendingCount || 0) + 1;
+      entry.timestamp = now;
+      entry.likerName = getLikerDisplayName();
+      entry.device = getClientDeviceInfo();
+    } else {
+      entry = {
+        wishId: String(wishId).trim(),
+        likerId,
+        likerName: getLikerDisplayName(),
+        device: getClientDeviceInfo(),
+        timestamp: now,
+        pendingCount: 1
+      };
+      list.push(entry);
+    }
+
+    this._writeLikeOutbox(list);
+  }
+
+  _scheduleLikeFlush() {
+    if (!this.getAppsScriptUrl()) return;
+    if (this._likeFlushTimer) {
+      clearTimeout(this._likeFlushTimer);
+    }
+    this._likeFlushTimer = setTimeout(() => {
+      this._likeFlushTimer = null;
+      this._likeSyncQueue = this._likeSyncQueue
+        .then(() => this._flushLikeOutbox())
+        .catch((err) => {
+          console.warn('Like outbox flush error:', err);
+        });
+    }, LIKE_FLUSH_DEBOUNCE_MS);
+  }
+
+  _flushLikeOutboxNow() {
+    if (!this.getAppsScriptUrl()) return;
+    this._likeSyncQueue = this._likeSyncQueue
+      .then(() => this._flushLikeOutbox())
+      .catch((err) => {
+        console.warn('Like outbox flush error:', err);
+      });
+  }
+
+  async _flushLikeOutbox() {
+    if (!this.getAppsScriptUrl()) return;
+
+    const outbox = this._readLikeOutbox();
+    if (!outbox.length) return;
+
+    const ip = await resolvePublicIp();
+
+    for (const entry of outbox) {
+      const toSend = Math.floor(Number(entry.pendingCount) || 0);
+      if (toSend < 1) continue;
+
+      const payload = {
+        action: 'like',
+        wishId: entry.wishId,
+        likerId: entry.likerId,
+        likerName: entry.likerName,
+        timestamp: entry.timestamp,
+        device: entry.device,
+        ip,
+        addCount: toSend
+      };
+
+      let sheetResult = { ok: false, reason: 'not_attempted' };
+      for (let attempt = 1; attempt <= LIKE_SYNC_MAX_ATTEMPTS; attempt++) {
+        if (attempt > 1) {
+          await new Promise((resolve) => setTimeout(resolve, LIKE_SYNC_RETRY_MS * attempt));
+        }
+        sheetResult = await this.postToAppsScript(payload, { requireJsonResponse: true });
+        if (sheetResult.ok) break;
+        if (sheetResult.reason === 'missing_apps_script_url') break;
+      }
+
+      if (!sheetResult.ok) {
+        console.warn('Tim chưa đẩy Sheet (còn trong localStorage):', entry.wishId, sheetResult.reason);
+        continue;
+      }
+
+      entry.pendingCount = Math.max(0, (entry.pendingCount || 0) - toSend);
+
+      this._upsertLocalServerLikeRow(
+        {
+          wishId: entry.wishId,
+          likerId: entry.likerId,
+          likerName: entry.likerName,
+          timestamp: entry.timestamp,
+          device: entry.device,
+          ip,
+          updatedAt: entry.timestamp
+        },
+        toSend
+      );
+
+      if (sheetResult.data && typeof sheetResult.data.count === 'number') {
+        this.heartCounts.set(entry.wishId, sheetResult.data.count);
+      }
+    }
+
+    this._writeLikeOutbox(outbox);
+    this._recountHeartTotals();
   }
 
   _bootstrapSessionLikes() {
@@ -303,22 +412,21 @@ export class GoogleSheetService {
       }
     });
 
-    this.sessionLikeRecords
-      .filter((r) => !r.syncedToSheet)
-      .forEach((row) => {
-        const wishId = String(row.wishId || '').trim();
-        const likerId = String(row.likerId || '').trim();
-        if (!wishId) return;
-        this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + 1);
-        if (likerId && likerId === visitorId) {
-          this.likedByVisitor.add(wishId);
-        }
-      });
+    this._readLikeOutbox().forEach((entry) => {
+      const wishId = String(entry.wishId || '').trim();
+      const likerId = String(entry.likerId || '').trim();
+      const pending = Math.floor(Number(entry.pendingCount) || 0);
+      if (!wishId || pending < 1) return;
+      this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + pending);
+      if (likerId && likerId === visitorId) {
+        this.likedByVisitor.add(wishId);
+      }
+    });
 
     this.recomputeWishRanks();
   }
 
-  _upsertLocalServerLikeRow(row) {
+  _upsertLocalServerLikeRow(row, addCount = 1) {
     const wishId = String(row.wishId || '').trim();
     const likerId = String(row.likerId || '').trim();
     if (!wishId || !likerId) return;
@@ -329,7 +437,7 @@ export class GoogleSheetService {
     );
 
     if (existing) {
-      existing.quantity = parseLikeQuantity(existing.quantity) + 1;
+      existing.quantity = parseLikeQuantity(existing.quantity) + addCount;
       existing.updatedAt = row.updatedAt || row.timestamp || existing.updatedAt;
       if (row.likerName) existing.likerName = row.likerName;
       if (row.device) existing.device = row.device;
@@ -342,7 +450,7 @@ export class GoogleSheetService {
         timestamp: row.timestamp || '',
         device: row.device || '',
         ip: row.ip || '',
-        quantity: 1,
+        quantity: addCount,
         updatedAt: row.updatedAt || row.timestamp || '',
         syncedToSheet: true
       });
@@ -401,7 +509,7 @@ export class GoogleSheetService {
     this._recountHeartTotals();
     this._likesLoaded = true;
     this._sessionLikesBootstrapped = true;
-    this._enqueueUnsyncedLikes();
+    this._flushLikeOutboxNow();
   }
 
   /** Gọi sớm để lấy IP không chặn lúc bấm tim. */
@@ -486,115 +594,15 @@ export class GoogleSheetService {
     }
 
     this._bootstrapSessionLikes();
-    const likerId = getVisitorId();
-    const likerName = getLikerDisplayName();
-    const timestamp = new Date().toLocaleString('vi-VN');
-    const device = getClientDeviceInfo();
-    this._likeSeq += 1;
-    const likeId = `like-${this._likeSeq}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
-    const record = {
-      likeId,
-      wishId,
-      likerId,
-      likerName,
-      timestamp,
-      device,
-      ip: '',
-      syncedToSheet: false
-    };
-    this.sessionLikeRecords.push(record);
+    this._enqueueLikeToOutbox(wishId);
     this._recountHeartTotals();
-    const count = this.getHeartCount(wishId);
-
-    this._likeSyncQueue = this._likeSyncQueue
-      .then(() => this._syncLikeInBackground(record))
-      .catch((err) => {
-        console.warn('Like sync queue error:', err);
-      });
+    this._scheduleLikeFlush();
 
     return {
       accepted: true,
-      count,
+      count: this.getHeartCount(wishId),
       rank: this.getWishRank(wishId)
     };
-  }
-
-  async _syncLikeInBackground(record) {
-    if (record.syncedToSheet) return;
-
-    const { likeId, wishId, likerId, likerName, timestamp, device } = record;
-    try {
-      const ip = await resolvePublicIp();
-      record.ip = ip;
-
-      const idx = likeId ? this.sessionLikeRecords.findIndex((r) => r.likeId === likeId) : -1;
-      if (idx !== -1) {
-        this.sessionLikeRecords[idx] = { ...this.sessionLikeRecords[idx], ip };
-      }
-
-      const payload = {
-        action: 'like',
-        wishId,
-        likerId,
-        likerName,
-        timestamp,
-        device,
-        ip
-      };
-
-      let sheetResult = { ok: false, reason: 'not_attempted' };
-      for (let attempt = 1; attempt <= LIKE_SYNC_MAX_ATTEMPTS; attempt++) {
-        if (attempt > 1) {
-          await new Promise((resolve) => setTimeout(resolve, LIKE_SYNC_RETRY_MS * attempt));
-        }
-        sheetResult = await this.postToAppsScript(payload, { requireJsonResponse: true });
-        if (sheetResult.ok) break;
-        if (sheetResult.reason === 'missing_apps_script_url') break;
-      }
-
-      if (!sheetResult.ok) {
-        this._persistPendingLike(record);
-        console.warn('Like chưa ghi Sheet:', wishId, sheetResult.reason);
-        return;
-      }
-
-      record.syncedToSheet = true;
-      this._removePendingLike(likeId);
-      if (idx !== -1) {
-        this.sessionLikeRecords[idx] = {
-          ...this.sessionLikeRecords[idx],
-          ip,
-          syncedToSheet: true
-        };
-      }
-
-      this._upsertLocalServerLikeRow({
-        wishId,
-        likerId,
-        likerName,
-        timestamp,
-        device,
-        ip,
-        updatedAt: timestamp
-      });
-
-      if (sheetResult.data && typeof sheetResult.data.count === 'number') {
-        const serverTotal = sheetResult.data.count;
-        const localTotal = this.getHeartCount(wishId);
-        if (serverTotal >= localTotal) {
-          this.heartCounts.set(wishId, serverTotal);
-          this.recomputeWishRanks();
-        } else {
-          this._recountHeartTotals();
-        }
-      } else {
-        this._recountHeartTotals();
-      }
-    } catch (err) {
-      this._persistPendingLike(record);
-      console.warn('Background like sync failed:', err);
-    }
   }
 
   /**

@@ -992,6 +992,13 @@
   .toast-msg.show {
     transform: translateY(0);
   }
+
+  /* iOS Safari: font < 16px → zoom khi focus input */
+  .form-input,
+  .form-textarea,
+  .form-select {
+    font-size: 16px;
+  }
 }
 
 /* Lantern Detail Modal Styling */

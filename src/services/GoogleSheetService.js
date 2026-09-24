@@ -12,8 +12,6 @@ import {
   resolvePublicIp
 } from '../utils/visitor.js';
 
-const STORAGE_KEY = 'midautumn_wishes_cache';
-const LIKES_CACHE_KEY = 'midautumn_likes_cache';
 const APPS_SCRIPT_URL_KEY = 'midautumn_apps_script_url';
 
 const HEADER_LABELS = new Set([
@@ -109,7 +107,10 @@ export class GoogleSheetService {
     this.heartCounts = new Map();
     this.likedByVisitor = new Set();
     this._likesLoaded = false;
-    this._localLikesBootstrapped = false;
+    this._sessionLikesBootstrapped = false;
+    /** Chỉ trong phiên tab — không ghi localStorage */
+    this.sessionWishes = [];
+    this.sessionLikeRecords = [];
   }
 
   getSheetId() {
@@ -153,18 +154,18 @@ export class GoogleSheetService {
     return this.likedByVisitor.has(wishId);
   }
 
-  _bootstrapLikesFromLocal() {
-    if (this._localLikesBootstrapped || this._likesLoaded) {
-      this._localLikesBootstrapped = true;
+  _bootstrapSessionLikes() {
+    if (this._sessionLikesBootstrapped || this._likesLoaded) {
+      this._sessionLikesBootstrapped = true;
       return;
     }
-    this._localLikesBootstrapped = true;
-    const merged = this._mergeLikeRecords([], this._readLocalLikeCache());
+    this._sessionLikesBootstrapped = true;
+    const merged = this._mergeLikeRecords([], this.sessionLikeRecords);
     this._applyLikeRecords(merged);
   }
 
-  _hasLocalLike(wishId, likerId) {
-    return this._readLocalLikeCache().some(
+  _hasSessionLike(wishId, likerId) {
+    return this.sessionLikeRecords.some(
       (r) => String(r.wishId).trim() === String(wishId).trim() && String(r.likerId).trim() === likerId
     );
   }
@@ -186,26 +187,7 @@ export class GoogleSheetService {
     });
   }
 
-  _readLocalLikeCache() {
-    try {
-      const raw = localStorage.getItem(LIKES_CACHE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  _writeLocalLikeCache(records) {
-    try {
-      localStorage.setItem(LIKES_CACHE_KEY, JSON.stringify(records.slice(-500)));
-    } catch {
-      /* ignore */
-    }
-  }
-
-  _mergeLikeRecords(serverRows, localRows) {
+  _mergeLikeRecords(serverRows, sessionRows) {
     const seen = new Set();
     const merged = [];
 
@@ -225,12 +207,12 @@ export class GoogleSheetService {
     };
 
     serverRows.forEach(push);
-    localRows.forEach(push);
+    sessionRows.forEach(push);
     return merged;
   }
 
   /**
-   * Đọc tab Likes (gviz) + cache local — gọi khi mở trang.
+   * Đọc tab Likes (gviz) + tim trong phiên — gọi khi mở trang.
    */
   async loadLikes() {
     let serverRows = [];
@@ -261,10 +243,10 @@ export class GoogleSheetService {
       }
     }
 
-    const merged = this._mergeLikeRecords(serverRows, this._readLocalLikeCache());
+    const merged = this._mergeLikeRecords(serverRows, this.sessionLikeRecords);
     this._applyLikeRecords(merged);
     this._likesLoaded = true;
-    this._localLikesBootstrapped = true;
+    this._sessionLikesBootstrapped = true;
   }
 
   /** Gọi sớm để lấy IP không chặn lúc bấm tim. */
@@ -335,10 +317,10 @@ export class GoogleSheetService {
       return { accepted: false, alreadyLiked: false, count: 0 };
     }
 
-    this._bootstrapLikesFromLocal();
+    this._bootstrapSessionLikes();
     const likerId = getVisitorId();
 
-    if (this.hasVisitorLiked(wishId) || this._hasLocalLike(wishId, likerId)) {
+    if (this.hasVisitorLiked(wishId) || this._hasSessionLike(wishId, likerId)) {
       this.likedByVisitor.add(wishId);
       return {
         accepted: false,
@@ -351,16 +333,14 @@ export class GoogleSheetService {
     const timestamp = new Date().toLocaleString('vi-VN');
     const device = getClientDeviceInfo();
 
-    const localRecord = { wishId, likerId, likerName, timestamp, device, ip: '' };
-    const localCache = this._readLocalLikeCache();
-    localCache.push(localRecord);
-    this._writeLocalLikeCache(localCache);
+    const record = { wishId, likerId, likerName, timestamp, device, ip: '' };
+    this.sessionLikeRecords.push(record);
 
     this.likedByVisitor.add(wishId);
     const count = this.getHeartCount(wishId) + 1;
     this.heartCounts.set(wishId, count);
 
-    void this._syncLikeInBackground(localRecord);
+    void this._syncLikeInBackground(record);
 
     return { accepted: true, alreadyLiked: false, count };
   }
@@ -371,16 +351,14 @@ export class GoogleSheetService {
       const ip = await resolvePublicIp();
       record.ip = ip;
 
-      const cache = this._readLocalLikeCache();
-      const idx = cache.findIndex(
+      const idx = this.sessionLikeRecords.findIndex(
         (r) =>
           String(r.wishId).trim() === String(wishId).trim() &&
           String(r.likerId).trim() === likerId &&
           r.timestamp === timestamp
       );
       if (idx !== -1) {
-        cache[idx] = { ...cache[idx], ip };
-        this._writeLocalLikeCache(cache);
+        this.sessionLikeRecords[idx] = { ...this.sessionLikeRecords[idx], ip };
       }
 
       const sheetResult = await this.postToAppsScript({
@@ -402,27 +380,10 @@ export class GoogleSheetService {
   }
 
   /**
-   * Fetch wishes from Google Sheet via gviz API + merge with local cache
+   * Fetch wishes from Google Sheet (gviz) + điều ước thả trong phiên này
    */
   async fetchWishes() {
-    const wishes = [];
-
-    try {
-      const cached = localStorage.getItem(STORAGE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((w) => {
-            if (w && !w.id && w.wish) {
-              w.id = stableWishId(w.author, w.wish, w.timestamp);
-            }
-          });
-          wishes.push(...parsed);
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read cached wishes', e);
-    }
+    const wishes = this.sessionWishes.map((w) => ({ ...w }));
 
     if (!this.gvizUrl) {
       return wishes;
@@ -483,7 +444,7 @@ export class GoogleSheetService {
   }
 
   /**
-   * Save a newly released wish to Google Sheet and local cache
+   * Ghi điều ước lên Sheet; giữ bản trong RAM đến khi đóng tab
    */
   async saveWish(author, wish, wishId) {
     const timestamp = new Date().toLocaleString('vi-VN');
@@ -497,12 +458,9 @@ export class GoogleSheetService {
       timestamp
     };
 
-    try {
-      const cached = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      cached.unshift(newWish);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cached.slice(0, 100)));
-    } catch (e) {
-      console.warn('Failed to save wish to local storage', e);
+    this.sessionWishes.unshift(newWish);
+    if (this.sessionWishes.length > 100) {
+      this.sessionWishes.length = 100;
     }
 
     const sheetResult = await this.postWishToSheet({

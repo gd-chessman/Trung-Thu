@@ -227,6 +227,7 @@ export class SkyLanterns {
       sparkTrail,
       sparkGeo,
       isWish,
+      speedZ: 2.8,
       data
     };
   }
@@ -310,7 +311,8 @@ export class SkyLanterns {
     lantern.mesh.position.copy(originPos);
     lantern.mesh.scale.setScalar(1.5);
 
-    lantern.speedY = 2.6;
+    lantern.speedY = 3.1;
+    lantern.speedZ = 0.45;
     lantern.swaySpeed = 1.2;
     lantern.swayAmp = 0.5;
     lantern.phase = Math.random() * Math.PI;
@@ -392,7 +394,7 @@ export class SkyLanterns {
     // 2. Animate special wish lanterns
     this.wishLanterns.forEach(lantern => {
       lantern.mesh.position.y += lantern.speedY * delta;
-      lantern.mesh.position.z -= delta * 2.8; // soaring back toward the celestial moon
+      lantern.mesh.position.z -= delta * (lantern.speedZ ?? 2.8);
       lantern.mesh.position.x += Math.sin(this.time * lantern.swaySpeed + lantern.phase) * delta * 2.2;
       lantern.mesh.rotation.y += lantern.rotSpeed * delta;
       lantern.mesh.rotation.z = Math.sin(this.time * lantern.swaySpeed + lantern.phase) * 0.1;

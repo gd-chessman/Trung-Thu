@@ -187,13 +187,51 @@ export class SceneManager {
   }
 
   /**
+   * Vị trí spawn đèn cầu nguyện — ngay vùng giữa cụm nút dưới màn hình (NDC từ DOM).
+   */
+  getWishLanternSpawnLocal() {
+    const cam = this.cameraManager.camera;
+    const group = this.skyLanterns.group;
+    group.updateWorldMatrix(true, false);
+
+    let ndcX = 0;
+    let ndcY = -0.68;
+
+    const dockBar = document.querySelector('.dock-action-bar');
+    const bottomDock = document.querySelector('.bottom-dock');
+    const wishBtn = document.getElementById('btn-action-wish');
+    const anchor = bottomDock || dockBar || wishBtn;
+
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect();
+      const sx = rect.left + rect.width * 0.5;
+      const gapAboveDock = Math.max(36, window.innerHeight * 0.05);
+      const sy = rect.top - gapAboveDock;
+      ndcX = (sx / window.innerWidth) * 2 - 1;
+      ndcY = -(sy / window.innerHeight) * 2 + 1;
+    }
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), cam);
+
+    const target = this.cameraManager.controls.target;
+    const distToTarget = cam.position.distanceTo(target);
+    const spawnDist = THREE.MathUtils.clamp(distToTarget * 0.48, 10, 24);
+
+    const world = raycaster.ray.origin.clone();
+    world.addScaledVector(raycaster.ray.direction, spawnDist);
+
+    const local = group.worldToLocal(world);
+    local.y -= 1.2;
+
+    return local;
+  }
+
+  /**
    * Release an interactive wish lantern & save to Google Sheet
    */
   releaseWish(author, wishText) {
-    const cam = this.cameraManager.camera;
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-    const spawnPos = cam.position.clone().add(forward.multiplyScalar(7));
-    spawnPos.y = Math.max(spawnPos.y - 1.5, -2);
+    const spawnPos = this.getWishLanternSpawnLocal();
 
     const wishId = googleSheetService.createWishId();
     const lantern = this.skyLanterns.releaseWishLantern(author, wishText, spawnPos, '', wishId);

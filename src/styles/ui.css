@@ -1246,8 +1246,17 @@
   margin-left: auto;
 }
 
+.leaderboard-wish-wrap {
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
 .leaderboard-wish {
   margin: 0;
+  width: 100%;
   font-family: var(--font-serif);
   font-size: 0.92rem;
   line-height: 1.45;
@@ -1257,6 +1266,43 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.leaderboard-wish.leaderboard-wish--expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: unset;
+}
+
+.leaderboard-wish-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 1px solid rgba(245, 197, 24, 0.35);
+  border-radius: 999px;
+  background: rgba(245, 197, 24, 0.08);
+  color: var(--gold-light);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.leaderboard-wish-more:hover {
+  background: rgba(245, 197, 24, 0.18);
+  border-color: rgba(245, 197, 24, 0.55);
+}
+
+.leaderboard-wish-more[hidden] {
+  display: none !important;
+}
+
+.leaderboard-wish-more-icon {
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
 .leaderboard-time {

@@ -38,11 +38,54 @@ export class LeaderboardModal {
     });
 
     this.listEl.addEventListener('click', (e) => {
+      const moreBtn = e.target.closest('.leaderboard-wish-more');
+      if (moreBtn && !moreBtn.hidden) {
+        e.preventDefault();
+        const wrap = moreBtn.closest('.leaderboard-wish-wrap');
+        const p = wrap?.querySelector('.leaderboard-wish');
+        if (!p) return;
+        const expanded = p.classList.toggle('leaderboard-wish--expanded');
+        this._setWishMoreButtonState(moreBtn, expanded);
+        if (!expanded) {
+          this._updateWishMoreButtons();
+        } else {
+          moreBtn.hidden = false;
+        }
+        return;
+      }
+
       const btn = e.target.closest('.leaderboard-heart-btn');
       if (!btn || btn.disabled) return;
       e.preventDefault();
       const wishId = btn.dataset.wishId;
       if (wishId) this.submitHeart(wishId, btn);
+    });
+  }
+
+  _setWishMoreButtonState(btn, expanded) {
+    const label = btn.querySelector('.leaderboard-wish-more-label');
+    const icon = btn.querySelector('.leaderboard-wish-more-icon');
+    if (label) label.textContent = expanded ? 'Thu gọn' : 'Xem thêm';
+    if (icon) icon.textContent = expanded ? '▴' : '▾';
+    btn.title = expanded ? 'Thu gọn lời ước' : 'Xem đầy đủ lời ước';
+    btn.setAttribute('aria-label', expanded ? 'Thu gọn lời ước' : 'Xem thêm lời ước');
+    btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+
+  /** Chỉ hiện nút xem thêm khi lời ước bị cắt (line-clamp). */
+  _updateWishMoreButtons() {
+    this.listEl.querySelectorAll('.leaderboard-wish-wrap').forEach((wrap) => {
+      const p = wrap.querySelector('.leaderboard-wish');
+      const moreBtn = wrap.querySelector('.leaderboard-wish-more');
+      if (!p || !moreBtn) return;
+      if (p.classList.contains('leaderboard-wish--expanded')) {
+        moreBtn.hidden = false;
+        this._setWishMoreButtonState(moreBtn, true);
+        return;
+      }
+      this._setWishMoreButtonState(moreBtn, false);
+      const truncated = p.scrollHeight > p.clientHeight + 2;
+      moreBtn.hidden = !truncated;
     });
   }
 
@@ -173,7 +216,20 @@ export class LeaderboardModal {
                 <strong class="leaderboard-author">${escapeHtml(entry.author)}</strong>
                 <span class="detail-badge badge-wish leaderboard-tier ${tierClass}">${getWishRankLabel(entry.tier)}</span>
               </div>
-              <p class="leaderboard-wish">“${escapeHtml(entry.wish)}”</p>
+              <div class="leaderboard-wish-wrap">
+                <p class="leaderboard-wish">“${escapeHtml(entry.wish)}”</p>
+                <button
+                  type="button"
+                  class="leaderboard-wish-more"
+                  hidden
+                  title="Xem đầy đủ lời ước"
+                  aria-label="Xem thêm lời ước"
+                  aria-expanded="false"
+                >
+                  <span class="leaderboard-wish-more-icon" aria-hidden="true">▾</span>
+                  <span class="leaderboard-wish-more-label">Xem thêm</span>
+                </button>
+              </div>
               <div class="leaderboard-footer">
                 <button
                   type="button"
@@ -193,5 +249,6 @@ export class LeaderboardModal {
       .join('');
 
     this.listEl.innerHTML = html;
+    this._updateWishMoreButtons();
   }
 }

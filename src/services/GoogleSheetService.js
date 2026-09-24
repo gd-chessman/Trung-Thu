@@ -227,10 +227,13 @@ export class GoogleSheetService {
       const wishId = String(row.wishId || '').trim();
       const likerId = String(row.likerId || '').trim();
       if (!wishId || !likerId) return;
-      const key = `${wishId}|${likerId}|${row.timestamp || ''}`;
+      const key = row.likeId
+        ? String(row.likeId)
+        : `${wishId}|${likerId}|${row.timestamp || ''}|${merged.length}`;
       if (seen.has(key)) return;
       seen.add(key);
       merged.push({
+        likeId: row.likeId || key,
         wishId,
         likerId,
         likerName: row.likerName || '',
@@ -354,8 +357,9 @@ export class GoogleSheetService {
     const likerName = getLikerDisplayName();
     const timestamp = new Date().toLocaleString('vi-VN');
     const device = getClientDeviceInfo();
+    const likeId = `like-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const record = { wishId, likerId, likerName, timestamp, device, ip: '' };
+    const record = { likeId, wishId, likerId, likerName, timestamp, device, ip: '' };
     this.sessionLikeRecords.push(record);
 
     const count = this.getHeartCount(wishId) + 1;
@@ -372,17 +376,19 @@ export class GoogleSheetService {
   }
 
   async _syncLikeInBackground(record) {
-    const { wishId, likerId, likerName, timestamp, device } = record;
+    const { likeId, wishId, likerId, likerName, timestamp, device } = record;
     try {
       const ip = await resolvePublicIp();
       record.ip = ip;
 
-      const idx = this.sessionLikeRecords.findIndex(
-        (r) =>
-          String(r.wishId).trim() === String(wishId).trim() &&
-          String(r.likerId).trim() === likerId &&
-          r.timestamp === timestamp
-      );
+      const idx = likeId
+        ? this.sessionLikeRecords.findIndex((r) => r.likeId === likeId)
+        : this.sessionLikeRecords.findIndex(
+            (r) =>
+              String(r.wishId).trim() === String(wishId).trim() &&
+              String(r.likerId).trim() === likerId &&
+              r.timestamp === timestamp
+          );
       if (idx !== -1) {
         this.sessionLikeRecords[idx] = { ...this.sessionLikeRecords[idx], ip };
       }
@@ -398,7 +404,12 @@ export class GoogleSheetService {
       });
 
       if (sheetResult.ok && sheetResult.data && typeof sheetResult.data.count === 'number') {
-        this.heartCounts.set(wishId, sheetResult.data.count);
+        const serverCount = sheetResult.data.count;
+        const localCount = this.getHeartCount(wishId);
+        if (serverCount > localCount) {
+          this.heartCounts.set(wishId, serverCount);
+          this.recomputeWishRanks();
+        }
       }
     } catch (err) {
       console.warn('Background like sync failed:', err);

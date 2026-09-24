@@ -26,6 +26,7 @@ export class LeaderboardModal {
     this.statusEl = document.getElementById('leaderboard-status');
     this._loading = false;
     this._entries = [];
+    this._renderScheduled = false;
 
     this.initEvents();
   }
@@ -41,21 +42,42 @@ export class LeaderboardModal {
       if (!btn || btn.disabled) return;
       e.preventDefault();
       const wishId = btn.dataset.wishId;
-      if (wishId) this.submitHeart(wishId);
+      if (wishId) this.submitHeart(wishId, btn);
     });
   }
 
-  submitHeart(wishId) {
+  playHeartFeedback(result, btnEl) {
+    audioManager.playChime(1046, 0.3);
+
+    if (btnEl) {
+      btnEl.classList.remove('heart-btn-pop');
+      void btnEl.offsetWidth;
+      btnEl.classList.add('heart-btn-pop');
+    }
+
+    let origin = { x: 0.55, y: 0.45 };
+    if (btnEl) {
+      const rect = btnEl.getBoundingClientRect();
+      origin = {
+        x: (rect.left + rect.width / 2) / window.innerWidth,
+        y: (rect.top + rect.height / 2) / window.innerHeight
+      };
+    }
+
+    confetti({
+      particleCount: 18 + (4 - result.rank) * 10,
+      spread: 52,
+      startVelocity: 28,
+      origin,
+      colors: ['#ff3366', '#ffd700', '#ffffff']
+    });
+  }
+
+  submitHeart(wishId, btnEl) {
     const result = googleSheetService.likeWishNow(wishId);
     if (!result.accepted) return;
 
-    audioManager.playChime(1046, 0.28);
-    confetti({
-      particleCount: 16 + (4 - result.rank) * 8,
-      spread: 42,
-      origin: { x: 0.55, y: 0.45 },
-      colors: ['#ff3366', '#ffd700', '#ffffff']
-    });
+    this.playHeartFeedback(result, btnEl);
 
     if (!this._entries.length) return;
 
@@ -73,7 +95,22 @@ export class LeaderboardModal {
       return String(a.author).localeCompare(String(b.author), 'vi');
     });
 
-    this.render(this._entries);
+    const row = this.listEl.querySelector(`.leaderboard-item[data-wish-id="${CSS.escape(wishId)}"]`);
+    const countEl = row?.querySelector('.leaderboard-heart-count');
+    if (countEl) countEl.textContent = String(result.count);
+
+    this.scheduleRender();
+  }
+
+  scheduleRender() {
+    if (this._renderScheduled) return;
+    this._renderScheduled = true;
+    requestAnimationFrame(() => {
+      this._renderScheduled = false;
+      if (this._entries.length) {
+        this.render(this._entries);
+      }
+    });
   }
 
   async open() {
@@ -110,6 +147,7 @@ export class LeaderboardModal {
     if (!entries.length) {
       this._entries = [];
       this.statusEl.textContent = 'Chưa có điều ước nào — hãy thả đèn cầu nguyện đầu tiên!';
+      this.listEl.innerHTML = '';
       return;
     }
 

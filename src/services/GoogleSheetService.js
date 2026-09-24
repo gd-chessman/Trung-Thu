@@ -233,6 +233,45 @@ export class GoogleSheetService {
     return `${String(wishId).trim()}\u0001${String(likerId).trim()}`;
   }
 
+  _findServerRowQty_(wishId, likerId) {
+    const wid = String(wishId || '').trim();
+    const lid = String(likerId || '').trim();
+    const row = (this._lastServerLikeRows || []).find(
+      (r) => String(r.wishId).trim() === wid && String(r.likerId).trim() === lid
+    );
+    return row ? parseLikeQuantity(row.quantity) : 0;
+  }
+
+  /**
+   * Tránh cộng trùng: Sheet đã có tim mà outbox vẫn pending (reload / flush dở).
+   * confirmedRowQty = Số lượng trên Sheet đã “tính” cho cặp wish+người tim.
+   */
+  _reconcileOutboxWithSheet() {
+    const outbox = this._readLikeOutbox();
+    if (!outbox.length) return;
+
+    let changed = false;
+    for (const entry of outbox) {
+      let confirmed = Math.floor(Number(entry.confirmedRowQty) || 0);
+      let pending = Math.floor(Number(entry.pendingCount) || 0);
+      const serverQty = this._findServerRowQty_(entry.wishId, entry.likerId);
+
+      if (serverQty > confirmed) {
+        const appliedOnSheet = serverQty - confirmed;
+        pending = Math.max(0, pending - appliedOnSheet);
+        confirmed = serverQty;
+        changed = true;
+      }
+
+      entry.confirmedRowQty = confirmed;
+      entry.pendingCount = pending;
+    }
+
+    if (changed) {
+      this._writeLikeOutbox(outbox);
+    }
+  }
+
   /** Gộp format cũ (từng lần bấm) → outbox pendingCount */
   _migrateLegacyPendingLikes() {
     try {
@@ -293,7 +332,8 @@ export class GoogleSheetService {
         likerName: getLikerDisplayName(),
         device: getClientDeviceInfo(),
         timestamp: now,
-        pendingCount: 1
+        pendingCount: 1,
+        confirmedRowQty: this._findServerRowQty_(wishId, likerId)
       };
       list.push(entry);
     }
@@ -364,6 +404,11 @@ export class GoogleSheetService {
       }
 
       entry.pendingCount = Math.max(0, (entry.pendingCount || 0) - toSend);
+      if (sheetResult.data && typeof sheetResult.data.quantity === 'number') {
+        entry.confirmedRowQty = Math.floor(sheetResult.data.quantity);
+      } else {
+        entry.confirmedRowQty = (entry.confirmedRowQty || 0) + toSend;
+      }
 
       this._upsertLocalServerLikeRow(
         {
@@ -381,9 +426,10 @@ export class GoogleSheetService {
       if (sheetResult.data && typeof sheetResult.data.count === 'number') {
         this.heartCounts.set(entry.wishId, sheetResult.data.count);
       }
+
+      this._writeLikeOutbox(outbox);
     }
 
-    this._writeLikeOutbox(outbox);
     this._recountHeartTotals();
   }
 
@@ -506,10 +552,13 @@ export class GoogleSheetService {
     }
 
     this._lastServerLikeRows = serverRows;
+    this._reconcileOutboxWithSheet();
     this._recountHeartTotals();
     this._likesLoaded = true;
     this._sessionLikesBootstrapped = true;
-    this._flushLikeOutboxNow();
+    await this._likeSyncQueue.then(() => this._flushLikeOutbox());
+    this._reconcileOutboxWithSheet();
+    this._recountHeartTotals();
   }
 
   /** Gọi sớm để lấy IP không chặn lúc bấm tim. */

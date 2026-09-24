@@ -1000,7 +1000,7 @@
   .btn-primary-wish {
     width: 100%;
     padding: 11px 12px;
-    font-size: 0.84rem;
+    font-size: 16px;
     min-height: 44px;
   }
   .dock-action-grid {
@@ -1022,8 +1022,8 @@
     width: 100%;
     flex: none;
     padding: 9px 5px;
-    font-size: 0.7rem;
-    min-height: 42px;
+    font-size: 16px;
+    min-height: 44px;
     flex-direction: column;
     gap: 4px;
     border-radius: 14px;

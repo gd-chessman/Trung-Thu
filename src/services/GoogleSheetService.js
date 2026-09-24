@@ -6,6 +6,7 @@
 
 import {
   getClientDeviceInfo,
+  getLikeClientMeta,
   getLikerDisplayName,
   getVisitorId,
   rememberAuthorName,
@@ -27,7 +28,9 @@ const HEADER_LABELS = new Set([
   'mã người tim',
   'tên người tim',
   'thiết bị',
-  'ip'
+  'ip',
+  'số lượng',
+  'cập nhật'
 ]);
 
 const SHEET_ID_FROM_URL = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
@@ -99,6 +102,12 @@ function cellValue(cell) {
   return cell.f != null && cell.f !== '' ? String(cell.f) : String(cell.v ?? '');
 }
 
+function parseLikeQuantity(raw) {
+  const n = Number(String(raw ?? '').replace(/,/g, '').trim());
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.floor(n);
+}
+
 export class GoogleSheetService {
   constructor() {
     this.sheetId = resolveSheetId();
@@ -114,6 +123,10 @@ export class GoogleSheetService {
     this.sessionLikeRecords = [];
     this._rankByWishId = new Map();
     this._activeWishIds = [];
+    this._lastServerLikeRows = [];
+    this._likeSeq = 0;
+    this._likeSyncQueue = Promise.resolve();
+    this._loadLikesPromise = null;
   }
 
   setActiveWishIds(ids) {
@@ -191,65 +204,86 @@ export class GoogleSheetService {
       return;
     }
     this._sessionLikesBootstrapped = true;
-    const merged = this._mergeLikeRecords([], this.sessionLikeRecords);
-    this._applyLikeRecords(merged);
+    this._recountHeartTotals();
   }
 
-  _hasSessionLike(wishId, likerId) {
-    return this.sessionLikeRecords.some(
-      (r) => String(r.wishId).trim() === String(wishId).trim() && String(r.likerId).trim() === likerId
-    );
-  }
-
-  _applyLikeRecords(records) {
+  _recountHeartTotals() {
     this.heartCounts.clear();
     this.likedByVisitor.clear();
     const visitorId = getVisitorId();
 
-    records.forEach((row) => {
+    (this._lastServerLikeRows || []).forEach((row) => {
       const wishId = String(row.wishId || '').trim();
       const likerId = String(row.likerId || '').trim();
       if (!wishId) return;
-
-      this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + 1);
+      const qty = parseLikeQuantity(row.quantity);
+      this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + qty);
       if (likerId && likerId === visitorId) {
         this.likedByVisitor.add(wishId);
       }
     });
+
+    this.sessionLikeRecords
+      .filter((r) => !r.syncedToSheet)
+      .forEach((row) => {
+        const wishId = String(row.wishId || '').trim();
+        const likerId = String(row.likerId || '').trim();
+        if (!wishId) return;
+        this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + 1);
+        if (likerId && likerId === visitorId) {
+          this.likedByVisitor.add(wishId);
+        }
+      });
+
     this.recomputeWishRanks();
   }
 
-  _mergeLikeRecords(serverRows, sessionRows) {
-    const seen = new Set();
-    const merged = [];
+  _upsertLocalServerLikeRow(row) {
+    const wishId = String(row.wishId || '').trim();
+    const likerId = String(row.likerId || '').trim();
+    if (!wishId || !likerId) return;
 
-    const push = (row) => {
-      const wishId = String(row.wishId || '').trim();
-      const likerId = String(row.likerId || '').trim();
-      if (!wishId || !likerId) return;
-      const key = row.likeId
-        ? String(row.likeId)
-        : `${wishId}|${likerId}|${row.timestamp || ''}|${merged.length}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      merged.push({
-        likeId: row.likeId || key,
+    const existing = this._lastServerLikeRows.find(
+      (r) =>
+        String(r.wishId).trim() === wishId && String(r.likerId).trim() === likerId
+    );
+
+    if (existing) {
+      existing.quantity = parseLikeQuantity(existing.quantity) + 1;
+      existing.updatedAt = row.updatedAt || row.timestamp || existing.updatedAt;
+      if (row.likerName) existing.likerName = row.likerName;
+      if (row.device) existing.device = row.device;
+      if (row.ip) existing.ip = row.ip;
+    } else {
+      this._lastServerLikeRows.push({
         wishId,
         likerId,
         likerName: row.likerName || '',
-        timestamp: row.timestamp || ''
+        timestamp: row.timestamp || '',
+        device: row.device || '',
+        ip: row.ip || '',
+        quantity: 1,
+        updatedAt: row.updatedAt || row.timestamp || '',
+        syncedToSheet: true
       });
-    };
-
-    serverRows.forEach(push);
-    sessionRows.forEach(push);
-    return merged;
+    }
   }
 
   /**
    * Đọc tab Likes (gviz) + tim trong phiên — gọi khi mở trang.
    */
   async loadLikes() {
+    if (this._loadLikesPromise) {
+      return this._loadLikesPromise;
+    }
+
+    this._loadLikesPromise = this._loadLikesFromSheet().finally(() => {
+      this._loadLikesPromise = null;
+    });
+    return this._loadLikesPromise;
+  }
+
+  async _loadLikesFromSheet() {
     let serverRows = [];
 
     if (this.likesGvizUrl) {
@@ -270,7 +304,12 @@ export class GoogleSheetService {
             timestamp: cellValue(c[0]),
             wishId: cellValue(c[1]),
             likerId: cellValue(c[2]),
-            likerName: cellValue(c[3])
+            likerName: cellValue(c[3]),
+            device: cellValue(c[4]),
+            ip: cellValue(c[5]),
+            quantity: parseLikeQuantity(cellValue(c[6])),
+            updatedAt: cellValue(c[7]) || cellValue(c[0]),
+            syncedToSheet: true
           });
         });
       } catch (err) {
@@ -278,8 +317,8 @@ export class GoogleSheetService {
       }
     }
 
-    const merged = this._mergeLikeRecords(serverRows, this.sessionLikeRecords);
-    this._applyLikeRecords(merged);
+    this._lastServerLikeRows = serverRows;
+    this._recountHeartTotals();
     this._likesLoaded = true;
     this._sessionLikesBootstrapped = true;
   }
@@ -357,16 +396,28 @@ export class GoogleSheetService {
     const likerName = getLikerDisplayName();
     const timestamp = new Date().toLocaleString('vi-VN');
     const device = getClientDeviceInfo();
-    const likeId = `like-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    this._likeSeq += 1;
+    const likeId = `like-${this._likeSeq}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const record = { likeId, wishId, likerId, likerName, timestamp, device, ip: '' };
+    const record = {
+      likeId,
+      wishId,
+      likerId,
+      likerName,
+      timestamp,
+      device,
+      ip: '',
+      syncedToSheet: false
+    };
     this.sessionLikeRecords.push(record);
+    this._recountHeartTotals();
+    const count = this.getHeartCount(wishId);
 
-    const count = this.getHeartCount(wishId) + 1;
-    this.heartCounts.set(wishId, count);
-    this.recomputeWishRanks();
-
-    void this._syncLikeInBackground(record);
+    this._likeSyncQueue = this._likeSyncQueue
+      .then(() => this._syncLikeInBackground(record))
+      .catch((err) => {
+        console.warn('Like sync queue error:', err);
+      });
 
     return {
       accepted: true,
@@ -381,14 +432,7 @@ export class GoogleSheetService {
       const ip = await resolvePublicIp();
       record.ip = ip;
 
-      const idx = likeId
-        ? this.sessionLikeRecords.findIndex((r) => r.likeId === likeId)
-        : this.sessionLikeRecords.findIndex(
-            (r) =>
-              String(r.wishId).trim() === String(wishId).trim() &&
-              String(r.likerId).trim() === likerId &&
-              r.timestamp === timestamp
-          );
+      const idx = likeId ? this.sessionLikeRecords.findIndex((r) => r.likeId === likeId) : -1;
       if (idx !== -1) {
         this.sessionLikeRecords[idx] = { ...this.sessionLikeRecords[idx], ip };
       }
@@ -403,13 +447,38 @@ export class GoogleSheetService {
         ip
       });
 
-      if (sheetResult.ok && sheetResult.data && typeof sheetResult.data.count === 'number') {
-        const serverCount = sheetResult.data.count;
-        const localCount = this.getHeartCount(wishId);
-        if (serverCount > localCount) {
-          this.heartCounts.set(wishId, serverCount);
+      if (!sheetResult.ok) return;
+
+      record.syncedToSheet = true;
+      if (idx !== -1) {
+        this.sessionLikeRecords[idx] = {
+          ...this.sessionLikeRecords[idx],
+          ip,
+          syncedToSheet: true
+        };
+      }
+
+      this._upsertLocalServerLikeRow({
+        wishId,
+        likerId,
+        likerName,
+        timestamp,
+        device,
+        ip,
+        updatedAt: timestamp
+      });
+
+      if (sheetResult.data && typeof sheetResult.data.count === 'number') {
+        const serverTotal = sheetResult.data.count;
+        const localTotal = this.getHeartCount(wishId);
+        if (serverTotal >= localTotal) {
+          this.heartCounts.set(wishId, serverTotal);
           this.recomputeWishRanks();
+        } else {
+          this._recountHeartTotals();
         }
+      } else {
+        this._recountHeartTotals();
       }
     } catch (err) {
       console.warn('Background like sync failed:', err);
@@ -524,11 +593,15 @@ export class GoogleSheetService {
       this.sessionWishes.length = 100;
     }
 
+    const { device, ip } = await getLikeClientMeta();
+
     const sheetResult = await this.postWishToSheet({
       timestamp,
       author: newWish.author,
       wish: newWish.wish,
-      wishId: id
+      wishId: id,
+      device,
+      ip
     });
 
     return {

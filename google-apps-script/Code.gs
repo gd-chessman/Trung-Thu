@@ -3,8 +3,8 @@
  * Execute as: Me | Who has access: Anyone
  * SPREADSHEET_ID: gán ID sheet (trùng sheet trong VITE_GOOGLE_SHEET_URL) trước khi deploy
  *
- * Tab 1 (mặc định): Thời gian | Người gửi | Lời ước | ID
- * Tab "Likes": Thời gian | ID điều ước | Mã người tim | Tên người tim | Thiết bị | IP
+ * Tab 1 (mặc định): Thời gian | Người gửi | Lời ước | ID | Thiết bị | IP
+ * Tab "Likes": Thời gian | ID điều ước | Mã người tim | Tên người tim | Thiết bị | IP | Số lượng | Cập nhật
  */
 
 const SPREADSHEET_ID = '';
@@ -17,23 +17,45 @@ function getSpreadsheet_() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
+function ensureWishHeader_(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['Thời gian', 'Người gửi', 'Lời ước', 'ID', 'Thiết bị', 'IP']);
+    return;
+  }
+  if (!sheet.getRange(1, 5).getValue()) {
+    sheet.getRange(1, 5).setValue('Thiết bị');
+  }
+  if (!sheet.getRange(1, 6).getValue()) {
+    sheet.getRange(1, 6).setValue('IP');
+  }
+}
+
 function appendWishRow(payload) {
   const ss = getSpreadsheet_();
   const sheet = ss.getSheets()[0];
 
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['Thời gian', 'Người gửi', 'Lời ước', 'ID']);
-  }
+  ensureWishHeader_(sheet);
 
   sheet.appendRow([
     payload.timestamp || Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss'),
     payload.author || 'Người ước nguyện',
     payload.wish || '',
-    payload.wishId || payload.id || ''
+    payload.wishId || payload.id || '',
+    payload.device || '',
+    payload.ip || ''
   ]);
 }
 
-var LIKES_HEADER = ['Thời gian', 'ID điều ước', 'Mã người tim', 'Tên người tim', 'Thiết bị', 'IP'];
+var LIKES_HEADER = [
+  'Thời gian',
+  'ID điều ước',
+  'Mã người tim',
+  'Tên người tim',
+  'Thiết bị',
+  'IP',
+  'Số lượng',
+  'Cập nhật'
+];
 
 function ensureLikesHeader_(sheet) {
   if (sheet.getLastRow() === 0) {
@@ -45,6 +67,12 @@ function ensureLikesHeader_(sheet) {
   }
   if (!sheet.getRange(1, 6).getValue()) {
     sheet.getRange(1, 6).setValue('IP');
+  }
+  if (!sheet.getRange(1, 7).getValue()) {
+    sheet.getRange(1, 7).setValue('Số lượng');
+  }
+  if (!sheet.getRange(1, 8).getValue()) {
+    sheet.getRange(1, 8).setValue('Cập nhật');
   }
 }
 
@@ -63,28 +91,30 @@ function getLikesSheet_() {
 function countLikesForWish_(sheet, wishId) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return 0;
-  const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
-  let count = 0;
+  const values = sheet.getRange(2, 1, lastRow, 7).getValues();
+  let total = 0;
+  const target = String(wishId).trim();
   for (let i = 0; i < values.length; i++) {
-    if (String(values[i][1]).trim() === String(wishId).trim()) {
-      count++;
-    }
+    if (String(values[i][1]).trim() !== target) continue;
+    let qty = Number(values[i][6]);
+    if (!qty || qty < 1) qty = 1;
+    total += qty;
   }
-  return count;
+  return total;
 }
 
-function hasLike_(sheet, wishId, likerId) {
+function findLikeRowIndex_(sheet, wishId, likerId) {
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return false;
-  const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  if (lastRow < 2) return -1;
+  const values = sheet.getRange(2, 1, lastRow, 3).getValues();
   const targetWish = String(wishId).trim();
   const targetLiker = String(likerId).trim();
   for (let i = 0; i < values.length; i++) {
     if (String(values[i][1]).trim() === targetWish && String(values[i][2]).trim() === targetLiker) {
-      return true;
+      return i + 2;
     }
   }
-  return false;
+  return -1;
 }
 
 function appendLikeRow(payload) {
@@ -94,20 +124,41 @@ function appendLikeRow(payload) {
     throw new Error('Thiếu wishId hoặc likerId');
   }
 
+  const now =
+    payload.timestamp ||
+    Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
   const sheet = getLikesSheet_();
-  sheet.appendRow([
-    payload.timestamp || Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss'),
-    wishId,
-    likerId,
-    payload.likerName || '',
-    payload.device || '',
-    payload.ip || ''
-  ]);
+  const rowIdx = findLikeRowIndex_(sheet, wishId, likerId);
+
+  if (rowIdx > 0) {
+    const qtyCell = sheet.getRange(rowIdx, 7);
+    let qty = Number(qtyCell.getValue());
+    if (!qty || qty < 1) qty = 1;
+    qtyCell.setValue(qty + 1);
+    sheet.getRange(rowIdx, 8).setValue(now);
+    if (payload.likerName) sheet.getRange(rowIdx, 4).setValue(payload.likerName);
+    if (payload.device) sheet.getRange(rowIdx, 5).setValue(payload.device);
+    if (payload.ip) sheet.getRange(rowIdx, 6).setValue(payload.ip);
+  } else {
+    sheet.appendRow([
+      now,
+      wishId,
+      likerId,
+      payload.likerName || '',
+      payload.device || '',
+      payload.ip || '',
+      1,
+      now
+    ]);
+  }
+
+  const rowQty =
+    rowIdx > 0 ? Number(sheet.getRange(rowIdx, 7).getValue()) || 1 : 1;
 
   return {
     ok: true,
-    alreadyLiked: false,
-    count: countLikesForWish_(sheet, wishId)
+    count: countLikesForWish_(sheet, wishId),
+    quantity: rowQty
   };
 }
 

@@ -20,6 +20,7 @@ export class StarLantern {
     this.createTassels();
 
     this.group.position.copy(position);
+    this.group.scale.setScalar(1.15);
     this.scene.add(this.group);
   }
 

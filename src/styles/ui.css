@@ -50,7 +50,7 @@
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   pointer-events: auto;
 }
 
@@ -58,20 +58,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   color: var(--text-primary);
   border-radius: 9999px;
-  padding: 9px 16px;
+  padding: 7px 13px;
   font-family: var(--font-sans);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);
   box-shadow: var(--glass-shadow);
+  min-height: 34px;
+}
+
+.icon-btn > span:first-child {
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 .icon-btn:hover {
@@ -94,8 +100,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 0 20px 24px;
+  gap: 12px;
+  padding: 0 20px 22px;
   pointer-events: none;
   background: linear-gradient(0deg, rgba(7, 9, 19, 0.92) 0%, rgba(7, 9, 19, 0) 100%);
 }
@@ -108,7 +114,7 @@
   border: 1px solid var(--glass-border);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  padding: 6px 8px;
+  padding: 5px 7px;
   border-radius: 40px;
   box-shadow: var(--glass-shadow);
   pointer-events: auto;
@@ -120,19 +126,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 30px;
+  gap: 5px;
+  padding: 7px 13px;
+  border-radius: 28px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.84rem;
+  font-size: 0.8rem;
   font-family: var(--font-sans);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
-  min-height: 40px;
+  min-height: 36px;
 }
 
 .cam-btn-icon {
@@ -156,16 +162,20 @@
 .dock-action-bar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   pointer-events: auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  width: 100%;
-  max-width: 560px;
+  width: min(960px, calc(100vw - 48px));
+  max-width: 960px;
 }
 
 .dock-action-grid {
-  display: contents;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .btn-label-short,
@@ -183,14 +193,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
   background: linear-gradient(135deg, #c91b1b 0%, #8c0c0c 100%);
   border: 1.5px solid var(--gold-warm);
   color: #fff8eb;
-  padding: 12px 26px;
+  padding: 10px 20px;
   border-radius: 50px;
   font-family: var(--font-sans);
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 4px 22px rgba(201, 27, 27, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -214,14 +226,17 @@
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   color: var(--text-primary);
-  padding: 11px 20px;
+  padding: 9px 16px;
   border-radius: 50px;
   font-family: var(--font-sans);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);
   box-shadow: var(--glass-shadow);
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .btn-secondary:hover {
@@ -729,10 +744,76 @@
   }
 }
 
+/* Desktop bottom dock */
+@media (min-width: 769px) {
+  .bottom-dock {
+    padding: 0 28px 24px;
+    gap: 10px;
+  }
+
+  .dock-camera-bar {
+    overflow-x: visible;
+    max-width: none;
+    padding: 5px 9px;
+    gap: 5px;
+  }
+
+  .cam-btn {
+    flex-direction: row;
+    padding: 7px 12px;
+    font-size: 0.78rem;
+    min-height: 34px;
+  }
+
+  .dock-action-bar {
+    padding: 6px 8px 6px 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: 999px;
+    box-shadow: var(--glass-shadow);
+  }
+
+  .btn-primary-wish {
+    padding: 9px 18px;
+    font-size: 0.88rem;
+  }
+
+  .dock-action-grid {
+    gap: 6px;
+  }
+
+  .btn-secondary {
+    flex-direction: row;
+    padding: 8px 11px;
+    font-size: 0.78rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: none;
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .top-bar {
     padding: 14px 16px;
+  }
+  .top-actions {
+    gap: 6px;
+  }
+  .icon-btn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    min-height: 32px;
+    gap: 5px;
+  }
+  .icon-btn > span:first-child {
+    font-size: 0.9rem;
   }
   .brand-text h1 {
     font-size: 1.15rem;
@@ -762,9 +843,9 @@
   .cam-btn {
     flex: 1 1 0;
     min-width: 0;
-    padding: 8px 4px;
-    font-size: 0.68rem;
-    min-height: 44px;
+    padding: 7px 4px;
+    font-size: 0.66rem;
+    min-height: 42px;
     flex-direction: column;
     gap: 3px;
     white-space: normal;
@@ -772,7 +853,7 @@
     line-height: 1.15;
   }
   .cam-btn-icon {
-    font-size: 1.05rem;
+    font-size: 0.95rem;
   }
   .cam-btn-label {
     max-width: 100%;
@@ -786,9 +867,9 @@
   }
   .btn-primary-wish {
     width: 100%;
-    padding: 13px 14px;
-    font-size: 0.88rem;
-    min-height: 48px;
+    padding: 11px 12px;
+    font-size: 0.84rem;
+    min-height: 44px;
   }
   .dock-action-grid {
     display: grid;
@@ -806,15 +887,17 @@
   }
   .btn-secondary {
     width: 100%;
-    padding: 11px 6px;
-    font-size: 0.72rem;
-    min-height: 46px;
+    flex: none;
+    padding: 9px 5px;
+    font-size: 0.7rem;
+    min-height: 42px;
     flex-direction: column;
     gap: 4px;
     border-radius: 14px;
+    white-space: normal;
   }
   .btn-secondary .btn-icon {
-    font-size: 1.1rem;
+    font-size: 1rem;
   }
   .modal-card {
     padding: 24px 20px;

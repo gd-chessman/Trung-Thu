@@ -8,6 +8,7 @@
 
 import * as THREE from 'three';
 import { audioManager } from '../audio/AudioManager.js';
+import { googleSheetService } from '../services/GoogleSheetService.js';
 
 // Collection of traditional Mid-Autumn Festival blessings for normal lanterns
 const FESTIVAL_BLESSINGS = [
@@ -223,13 +224,147 @@ export class SkyLanterns {
       paperMesh,
       light,
       flame,
+      ring,
       halo,
       sparkTrail,
       sparkGeo,
       isWish,
       speedZ: 2.8,
+      baseScale: 1.25,
+      heartRank: 3,
+      rank1Aura: null,
+      rank1Crown: null,
       data
     };
+  }
+
+  setRank1CelestialExtras(lantern, rank) {
+    const removeExtra = (mesh) => {
+      if (!mesh) return;
+      lantern.mesh.remove(mesh);
+      mesh.geometry?.dispose();
+      mesh.material?.dispose();
+    };
+
+    if (rank !== 1) {
+      removeExtra(lantern.rank1Aura);
+      removeExtra(lantern.rank1Crown);
+      lantern.rank1Aura = null;
+      lantern.rank1Crown = null;
+      lantern.haloPulseAmp = 0.15;
+      lantern.haloSpin = 0;
+      return;
+    }
+
+    if (lantern.rank1Aura) return;
+
+    const auraMat = new THREE.MeshBasicMaterial({
+      color: 0xffeeaa,
+      transparent: true,
+      opacity: 0.62,
+      blending: THREE.AdditiveBlending
+    });
+    const auraGeo = new THREE.TorusGeometry(2.05, 0.05, 8, 40);
+    auraGeo.rotateX(Math.PI / 2);
+    lantern.rank1Aura = new THREE.Mesh(auraGeo, auraMat);
+    lantern.rank1Aura.position.y = 1.52;
+    lantern.mesh.add(lantern.rank1Aura);
+
+    const crownMat = auraMat.clone();
+    crownMat.opacity = 0.78;
+    crownMat.color.setHex(0xffd700);
+    const crownGeo = new THREE.TorusGeometry(0.62, 0.04, 6, 28);
+    crownGeo.rotateX(Math.PI / 2);
+    lantern.rank1Crown = new THREE.Mesh(crownGeo, crownMat);
+    lantern.rank1Crown.position.y = 2.82;
+    lantern.mesh.add(lantern.rank1Crown);
+
+    lantern.haloPulseAmp = 0.28;
+    lantern.haloSpin = 0.85;
+  }
+
+  applyWishRankVisual(lantern, rank) {
+    const base = lantern.baseScale ?? 1.25;
+    const presets = {
+      1: {
+        scale: 1.42,
+        emissive: 3.05,
+        emissiveColor: 0xffcc44,
+        halo: 0xff3366,
+        light: 5.2,
+        spark: 0.72,
+        sparkColor: 0xfff0aa,
+        sparkOpacity: 0.98,
+        metalness: 0.22,
+        roughness: 0.18
+      },
+      2: { scale: 1.14, emissive: 1.95, emissiveColor: 0xffaa22, halo: 0x66ccff, light: 3.0, spark: 0.42, sparkColor: 0xffd700, sparkOpacity: 0.85, metalness: 0.1, roughness: 0.25 },
+      3: { scale: 1, emissive: 1.45, emissiveColor: 0xffaa22, halo: 0xffe066, light: 2.2, spark: 0.35, sparkColor: 0xffd700, sparkOpacity: 0.85, metalness: 0.1, roughness: 0.25 }
+    };
+    const cfg = presets[rank] || presets[3];
+
+    lantern.mesh.scale.setScalar(base * cfg.scale);
+
+    const mat = lantern.paperMesh?.material;
+    if (mat && 'emissiveIntensity' in mat) {
+      mat.emissiveIntensity = cfg.emissive;
+      if (mat.emissive) mat.emissive.setHex(cfg.emissiveColor);
+      if ('metalness' in mat) mat.metalness = cfg.metalness;
+      if ('roughness' in mat) mat.roughness = cfg.roughness;
+    }
+    if (lantern.halo?.material) {
+      lantern.halo.material.color.setHex(cfg.halo);
+      lantern.haloBaseOpacity = rank === 1 ? 0.92 : 0.58 + (4 - rank) * 0.16;
+      lantern.halo.scale.setScalar(rank === 1 ? 1.12 : 1);
+    }
+    if (lantern.light) {
+      lantern.lightBase = cfg.light;
+      if (rank === 1) lantern.light.color.setHex(0xff5588);
+      else lantern.light.color.setHex(0xffc107);
+    }
+    if (lantern.sparkTrail?.material) {
+      lantern.sparkTrail.material.size = cfg.spark;
+      lantern.sparkTrail.material.color.setHex(cfg.sparkColor);
+      lantern.sparkTrail.material.opacity = cfg.sparkOpacity;
+    }
+    if (lantern.flame) {
+      lantern.flame.scale.setScalar(rank === 1 ? 1.42 : rank === 2 ? 1.12 : 1);
+      if (lantern.flame.material) {
+        lantern.flame.material.color.setHex(rank === 1 ? 0xfff8ff : 0xffffff);
+      }
+    }
+    if (lantern.ring?.material) {
+      lantern.ring.material.color.setHex(rank === 1 ? 0xffee88 : 0xffd700);
+    }
+
+    this.setRank1CelestialExtras(lantern, rank);
+
+    if (lantern.paperMesh?.userData) {
+      lantern.paperMesh.userData.heartRank = rank;
+    }
+  }
+
+  syncWishHeartTiers() {
+    const wishIds = this.wishLanterns
+      .map((lantern) => lantern.paperMesh?.userData?.wishId)
+      .filter(Boolean);
+
+    googleSheetService.setActiveWishIds(wishIds);
+    googleSheetService.recomputeWishRanks(wishIds);
+
+    this.wishLanterns.forEach((lantern) => {
+      const wishId = lantern.paperMesh?.userData?.wishId;
+      if (!wishId) return;
+
+      const count = googleSheetService.getHeartCount(wishId);
+      const rank = googleSheetService.getWishRank(wishId);
+      if (lantern.heartRank === rank && lantern._lastSyncedCount === count) {
+        return;
+      }
+      lantern._lastSyncedCount = count;
+      lantern.heartRank = rank;
+      this.applyWishRankVisual(lantern, rank);
+    });
   }
 
   createWishCalligraphyTexture(author, wishText) {
@@ -308,8 +443,9 @@ export class SkyLanterns {
     };
 
     const lantern = this.createLanternEntity(wishData);
+    lantern.baseScale = 1.5;
     lantern.mesh.position.copy(originPos);
-    lantern.mesh.scale.setScalar(1.5);
+    lantern.mesh.scale.setScalar(lantern.baseScale);
 
     lantern.speedY = 3.1;
     lantern.speedZ = 0.45;
@@ -333,7 +469,7 @@ export class SkyLanterns {
   spawnExistingWish(author, wishText, timestamp = '', wishId = '') {
     const posX = (Math.random() - 0.5) * 160;
     const posY = 5 + Math.random() * 65;
-    const posZ = -15 - Math.random() * 110;
+    const posZ = -18 - Math.random() * 72;
 
     const lantern = this.createLanternEntity({
       isWish: true,
@@ -343,10 +479,12 @@ export class SkyLanterns {
       wishId
     });
 
+    lantern.baseScale = 1.2 + Math.random() * 0.4;
     lantern.mesh.position.set(posX, posY, posZ);
-    lantern.mesh.scale.setScalar(1.2 + Math.random() * 0.4);
+    lantern.mesh.scale.setScalar(lantern.baseScale);
 
     lantern.speedY = 1.3 + Math.random() * 1.5;
+    lantern.speedZ = 0.38 + Math.random() * 0.18;
     lantern.swaySpeed = 0.9 + Math.random() * 0.8;
     lantern.swayAmp = 0.4 + Math.random() * 0.4;
     lantern.phase = Math.random() * Math.PI * 2;
@@ -371,8 +509,12 @@ export class SkyLanterns {
     return list;
   }
 
-  update(delta) {
+  update(delta, flightBounds) {
     this.time += delta;
+    const wishMaxY = flightBounds?.maxY ?? 155;
+    const respawnYMin = flightBounds?.respawnYMin ?? -16;
+    const respawnYMax = flightBounds?.respawnYMax ?? -6;
+    const wishMinZ = flightBounds?.minZ ?? -210;
 
     // 1. Animate background normal lanterns
     this.lanterns.forEach(lantern => {
@@ -399,19 +541,44 @@ export class SkyLanterns {
       lantern.mesh.rotation.y += lantern.rotSpeed * delta;
       lantern.mesh.rotation.z = Math.sin(this.time * lantern.swaySpeed + lantern.phase) * 0.1;
 
+      const isTopRank = lantern.heartRank === 1;
+
       // Special halo pulse animation
       if (lantern.halo) {
-        const pulse = 1.0 + Math.sin(this.time * 3.5 + lantern.phase) * 0.15;
-        lantern.halo.scale.set(pulse, pulse, pulse);
-        lantern.halo.material.opacity = 0.65 + Math.sin(this.time * 4.0 + lantern.phase) * 0.3;
+        const pulseAmp = lantern.haloPulseAmp ?? 0.15;
+        const pulseSpeed = isTopRank ? 5.2 : 3.5;
+        const pulse = 1.0 + Math.sin(this.time * pulseSpeed + lantern.phase) * pulseAmp;
+        const haloBase = isTopRank ? 1.12 : 1;
+        lantern.halo.scale.set(haloBase * pulse, haloBase * pulse, haloBase * pulse);
+        const baseOp = lantern.haloBaseOpacity ?? 0.75;
+        const opSwing = isTopRank ? 0.32 : 0.22;
+        lantern.halo.material.opacity =
+          baseOp + Math.sin(this.time * (isTopRank ? 5.5 : 4.0) + lantern.phase) * opSwing;
+        if (lantern.haloSpin) {
+          lantern.halo.rotation.z += delta * lantern.haloSpin;
+        }
+      }
+
+      if (lantern.rank1Aura) {
+        const auraPulse = 1.0 + Math.sin(this.time * 4.2 + lantern.phase) * 0.12;
+        lantern.rank1Aura.scale.set(auraPulse, auraPulse, auraPulse);
+        lantern.rank1Aura.rotation.z -= delta * 1.1;
+        lantern.rank1Aura.material.opacity =
+          0.5 + Math.sin(this.time * 3.8 + lantern.phase) * 0.18;
+      }
+      if (lantern.rank1Crown) {
+        lantern.rank1Crown.rotation.z += delta * 1.6;
+        lantern.rank1Crown.material.opacity =
+          0.62 + Math.sin(this.time * 7 + lantern.phase) * 0.22;
       }
 
       // Special spark trail cascade
       if (lantern.sparkTrail && lantern.sparkGeo) {
-        lantern.sparkTrail.rotation.y += delta * 0.5;
+        lantern.sparkTrail.rotation.y += delta * (isTopRank ? 1.05 : 0.5);
+        const fallSpeed = isTopRank ? 2.65 : 1.8;
         const pos = lantern.sparkGeo.attributes.position.array;
         for (let i = 1; i < pos.length; i += 3) {
-          pos[i] -= delta * 1.8;
+          pos[i] -= delta * fallSpeed;
           if (pos[i] < -5.0) {
             pos[i] = 0;
           }
@@ -420,15 +587,21 @@ export class SkyLanterns {
       }
 
       if (lantern.light) {
-        lantern.light.intensity = 2.8 + Math.sin(this.time * 18 + lantern.phase) * 0.6;
+        const base = lantern.lightBase ?? 2.8;
+        const flicker = isTopRank ? 0.95 : 0.6;
+        const flickerSpeed = isTopRank ? 22 : 18;
+        lantern.light.intensity = base + Math.sin(this.time * flickerSpeed + lantern.phase) * flicker;
       }
 
       const p = lantern.mesh.position;
-      if (p.y > 88 || p.z < -125) {
-        p.y = -14 - Math.random() * 10;
+      if (p.y > wishMaxY || p.z < wishMinZ) {
+        const span = Math.max(4, respawnYMax - respawnYMin);
+        p.y = respawnYMin + Math.random() * span;
         p.x = (Math.random() - 0.5) * 140;
-        p.z = -20 - Math.random() * 55;
+        p.z = -22 - Math.random() * 48;
       }
     });
+
+    this.syncWishHeartTiers();
   }
 }

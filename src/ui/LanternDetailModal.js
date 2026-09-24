@@ -8,6 +8,7 @@
 import confetti from 'canvas-confetti';
 import { audioManager } from '../audio/AudioManager.js';
 import { googleSheetService } from '../services/GoogleSheetService.js';
+import { getWishRankLabel } from '../utils/wishRank.js';
 
 export class LanternDetailModal {
   constructor(openWishModalFn) {
@@ -62,14 +63,27 @@ export class LanternDetailModal {
 
     this.heartCount = result.count;
     if (this.heartCountEl) this.heartCountEl.textContent = this.heartCount;
+    this.updateWishRankBadge();
 
     audioManager.playChime(1046, 0.3);
     confetti({
-      particleCount: 25,
+      particleCount: 20 + (4 - result.rank) * 10,
       spread: 50,
       origin: { y: 0.5 },
       colors: ['#ff3366', '#ffd700', '#ffffff']
     });
+  }
+
+  updateWishRankBadge() {
+    if (!this.currentData?.isWish || !this.currentWishId) return;
+    const rank = googleSheetService.getWishRank(this.currentWishId);
+    this.badgeEl.textContent = `🏮 ĐÈN NGUYỆN CẦU · ${getWishRankLabel(rank)}`;
+    this.badgeEl.className = 'detail-badge badge-wish';
+    if (rank === 1) {
+      this.badgeEl.classList.add('badge-wish--rank1');
+    } else if (rank === 2) {
+      this.badgeEl.classList.add('badge-wish--rank2');
+    }
   }
 
   show(lanternData) {
@@ -96,6 +110,7 @@ export class LanternDetailModal {
         if (this.currentData !== lanternData) return;
         this.heartCount = googleSheetService.getHeartCount(this.currentWishId);
         if (this.heartCountEl) this.heartCountEl.textContent = this.heartCount;
+        this.updateWishRankBadge();
       });
       this.btnAction.textContent = '🏮 Thả Thêm Đèn Của Bạn';
     } else {

@@ -95,14 +95,6 @@ function appendLikeRow(payload) {
   }
 
   const sheet = getLikesSheet_();
-  if (hasLike_(sheet, wishId, likerId)) {
-    return {
-      ok: true,
-      alreadyLiked: true,
-      count: countLikesForWish_(sheet, wishId)
-    };
-  }
-
   sheet.appendRow([
     payload.timestamp || Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss'),
     wishId,

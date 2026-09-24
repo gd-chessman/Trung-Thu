@@ -11,6 +11,7 @@ import {
   rememberAuthorName,
   resolvePublicIp
 } from '../utils/visitor.js';
+import { computeRelativeWishRanks } from '../utils/wishRank.js';
 
 const APPS_SCRIPT_URL_KEY = 'midautumn_apps_script_url';
 
@@ -111,6 +112,36 @@ export class GoogleSheetService {
     /** Chỉ trong phiên tab — không ghi localStorage */
     this.sessionWishes = [];
     this.sessionLikeRecords = [];
+    this._rankByWishId = new Map();
+    this._activeWishIds = [];
+  }
+
+  setActiveWishIds(ids) {
+    this._activeWishIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  }
+
+  collectWishIds(extraIds = []) {
+    const ids = new Set();
+    this.heartCounts.forEach((_, wishId) => ids.add(wishId));
+    this.sessionWishes.forEach((w) => {
+      if (w?.id) ids.add(w.id);
+    });
+    this._activeWishIds.forEach((id) => ids.add(id));
+    extraIds.forEach((id) => {
+      if (id) ids.add(id);
+    });
+    return [...ids];
+  }
+
+  /** Xếp hạng lại: Hạng I = nhiều tim nhất trong danh sách đèn. */
+  recomputeWishRanks(extraIds = []) {
+    const ids = this.collectWishIds(extraIds);
+    this._rankByWishId = computeRelativeWishRanks(ids, (id) => this.getHeartCount(id));
+  }
+
+  getWishRank(wishId) {
+    if (!wishId) return 3;
+    return this._rankByWishId.get(String(wishId).trim()) ?? 3;
   }
 
   getSheetId() {
@@ -185,6 +216,7 @@ export class GoogleSheetService {
         this.likedByVisitor.add(wishId);
       }
     });
+    this.recomputeWishRanks();
   }
 
   _mergeLikeRecords(serverRows, sessionRows) {
@@ -195,7 +227,7 @@ export class GoogleSheetService {
       const wishId = String(row.wishId || '').trim();
       const likerId = String(row.likerId || '').trim();
       if (!wishId || !likerId) return;
-      const key = `${wishId}|${likerId}`;
+      const key = `${wishId}|${likerId}|${row.timestamp || ''}`;
       if (seen.has(key)) return;
       seen.add(key);
       merged.push({
@@ -309,26 +341,16 @@ export class GoogleSheetService {
   }
 
   /**
-   * Thả tim — cập nhật ngay trên máy; ghi Sheet chạy ngầm.
-   * @returns {{ accepted: boolean, alreadyLiked: boolean, count: number }}
+   * Thả tim — mỗi lần bấm +1 (cùng người được tim nhiều lần).
+   * @returns {{ accepted: boolean, count: number, rank: number }}
    */
   likeWishNow(wishId) {
     if (!wishId) {
-      return { accepted: false, alreadyLiked: false, count: 0 };
+      return { accepted: false, count: 0, rank: 3 };
     }
 
     this._bootstrapSessionLikes();
     const likerId = getVisitorId();
-
-    if (this.hasVisitorLiked(wishId) || this._hasSessionLike(wishId, likerId)) {
-      this.likedByVisitor.add(wishId);
-      return {
-        accepted: false,
-        alreadyLiked: true,
-        count: this.getHeartCount(wishId)
-      };
-    }
-
     const likerName = getLikerDisplayName();
     const timestamp = new Date().toLocaleString('vi-VN');
     const device = getClientDeviceInfo();
@@ -336,13 +358,17 @@ export class GoogleSheetService {
     const record = { wishId, likerId, likerName, timestamp, device, ip: '' };
     this.sessionLikeRecords.push(record);
 
-    this.likedByVisitor.add(wishId);
     const count = this.getHeartCount(wishId) + 1;
     this.heartCounts.set(wishId, count);
+    this.recomputeWishRanks();
 
     void this._syncLikeInBackground(record);
 
-    return { accepted: true, alreadyLiked: false, count };
+    return {
+      accepted: true,
+      count,
+      rank: this.getWishRank(wishId)
+    };
   }
 
   async _syncLikeInBackground(record) {

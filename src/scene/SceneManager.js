@@ -228,6 +228,38 @@ export class SceneManager {
   }
 
   /**
+   * Giới hạn bay đèn nguyện cầu theo viewport (tránh recycle sớm ~65% màn hình).
+   */
+  getWishLanternFlightBounds() {
+    const cam = this.cameraManager.camera;
+    const group = this.skyLanterns.group;
+    group.updateWorldMatrix(true, false);
+
+    const target = this.cameraManager.controls.target;
+    const distToTarget = cam.position.distanceTo(target);
+    const sampleDist = THREE.MathUtils.clamp(distToTarget * 0.48, 10, 24);
+
+    const localYAtNdc = (ndcX, ndcY) => {
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), cam);
+      const world = raycaster.ray.origin.clone();
+      world.addScaledVector(raycaster.ray.direction, sampleDist);
+      return group.worldToLocal(world).y;
+    };
+
+    const topY = localYAtNdc(0, 0.92);
+    const bottomY = localYAtNdc(0, -0.52);
+    const safeTop = Math.max(topY, bottomY + 70);
+
+    return {
+      maxY: safeTop + 8,
+      respawnYMin: bottomY - 4,
+      respawnYMax: bottomY + 6,
+      minZ: -210
+    };
+  }
+
+  /**
    * Release an interactive wish lantern & save to Google Sheet
    */
   releaseWish(author, wishText) {
@@ -274,7 +306,9 @@ export class SceneManager {
     if (this.starLantern) this.starLantern.update(delta);
     if (this.mooncake) this.mooncake.update(delta);
     if (this.jadeRabbit) this.jadeRabbit.update(delta);
-    if (this.skyLanterns) this.skyLanterns.update(delta);
+    if (this.skyLanterns) {
+      this.skyLanterns.update(delta, this.getWishLanternFlightBounds());
+    }
     if (this.waterSurface) this.waterSurface.update(delta);
     if (this.particleSky) this.particleSky.update(delta);
 

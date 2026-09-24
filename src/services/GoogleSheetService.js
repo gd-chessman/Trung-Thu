@@ -4,10 +4,32 @@
  * Env (tuỳ chọn): VITE_GOOGLE_SHEET_URL — đọc; VITE_APPS_SCRIPT_URL — ghi
  */
 
+import {
+  getClientDeviceInfo,
+  getLikerDisplayName,
+  getVisitorId,
+  rememberAuthorName,
+  resolvePublicIp
+} from '../utils/visitor.js';
+
 const STORAGE_KEY = 'midautumn_wishes_cache';
+const LIKES_CACHE_KEY = 'midautumn_likes_cache';
 const APPS_SCRIPT_URL_KEY = 'midautumn_apps_script_url';
 
-const HEADER_LABELS = new Set(['thời gian', 'người gửi', 'lời ước', 'timestamp', 'author', 'wish']);
+const HEADER_LABELS = new Set([
+  'thời gian',
+  'người gửi',
+  'lời ước',
+  'timestamp',
+  'author',
+  'wish',
+  'id',
+  'id điều ước',
+  'mã người tim',
+  'tên người tim',
+  'thiết bị',
+  'ip'
+]);
 
 const SHEET_ID_FROM_URL = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
 
@@ -30,8 +52,12 @@ function resolveSheetId() {
   return '';
 }
 
-function buildGvizUrl(sheetId) {
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json`;
+function buildGvizUrl(sheetId, sheetName) {
+  const base = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json`;
+  if (sheetName) {
+    return `${base}&sheet=${encodeURIComponent(sheetName)}`;
+  }
+  return base;
 }
 
 function resolveAppsScriptUrl() {
@@ -46,11 +72,44 @@ function resolveAppsScriptUrl() {
   }
 }
 
+export function stableWishId(author, wish, timestamp) {
+  const key = `${String(author).trim()}|${String(wish).trim()}|${String(timestamp).trim()}`;
+  let h = 0;
+  for (let i = 0; i < key.length; i++) {
+    h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  }
+  return `wish-stable-${(h >>> 0).toString(36)}`;
+}
+
+function parseGvizRows(text) {
+  const jsonStart = text.indexOf('{');
+  const jsonEnd = text.lastIndexOf('}');
+  if (jsonStart === -1 || jsonEnd === -1) {
+    return [];
+  }
+  const jsonStr = text.substring(jsonStart, jsonEnd + 1);
+  const data = JSON.parse(jsonStr);
+  if (!data?.table?.rows) {
+    return [];
+  }
+  return data.table.rows;
+}
+
+function cellValue(cell) {
+  if (!cell) return '';
+  return cell.f != null && cell.f !== '' ? String(cell.f) : String(cell.v ?? '');
+}
+
 export class GoogleSheetService {
   constructor() {
     this.sheetId = resolveSheetId();
     this.gvizUrl = this.sheetId ? buildGvizUrl(this.sheetId) : '';
+    this.likesGvizUrl = this.sheetId ? buildGvizUrl(this.sheetId, 'Likes') : '';
     this.appsScriptUrl = resolveAppsScriptUrl();
+    this.heartCounts = new Map();
+    this.likedByVisitor = new Set();
+    this._likesLoaded = false;
+    this._localLikesBootstrapped = false;
   }
 
   getSheetId() {
@@ -70,10 +129,159 @@ export class GoogleSheetService {
     return Boolean(this.getAppsScriptUrl());
   }
 
+  createWishId() {
+    return `wish-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  }
+
+  resolveWishIdFromLantern(lanternData) {
+    if (lanternData?.wishId) {
+      return lanternData.wishId;
+    }
+    return stableWishId(
+      lanternData?.author || '',
+      lanternData?.wishText || '',
+      lanternData?.timestamp || ''
+    );
+  }
+
+  getHeartCount(wishId) {
+    if (!wishId) return 0;
+    return this.heartCounts.get(wishId) || 0;
+  }
+
+  hasVisitorLiked(wishId) {
+    return this.likedByVisitor.has(wishId);
+  }
+
+  _bootstrapLikesFromLocal() {
+    if (this._localLikesBootstrapped || this._likesLoaded) {
+      this._localLikesBootstrapped = true;
+      return;
+    }
+    this._localLikesBootstrapped = true;
+    const merged = this._mergeLikeRecords([], this._readLocalLikeCache());
+    this._applyLikeRecords(merged);
+  }
+
+  _hasLocalLike(wishId, likerId) {
+    return this._readLocalLikeCache().some(
+      (r) => String(r.wishId).trim() === String(wishId).trim() && String(r.likerId).trim() === likerId
+    );
+  }
+
+  _applyLikeRecords(records) {
+    this.heartCounts.clear();
+    this.likedByVisitor.clear();
+    const visitorId = getVisitorId();
+
+    records.forEach((row) => {
+      const wishId = String(row.wishId || '').trim();
+      const likerId = String(row.likerId || '').trim();
+      if (!wishId) return;
+
+      this.heartCounts.set(wishId, (this.heartCounts.get(wishId) || 0) + 1);
+      if (likerId && likerId === visitorId) {
+        this.likedByVisitor.add(wishId);
+      }
+    });
+  }
+
+  _readLocalLikeCache() {
+    try {
+      const raw = localStorage.getItem(LIKES_CACHE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  _writeLocalLikeCache(records) {
+    try {
+      localStorage.setItem(LIKES_CACHE_KEY, JSON.stringify(records.slice(-500)));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _mergeLikeRecords(serverRows, localRows) {
+    const seen = new Set();
+    const merged = [];
+
+    const push = (row) => {
+      const wishId = String(row.wishId || '').trim();
+      const likerId = String(row.likerId || '').trim();
+      if (!wishId || !likerId) return;
+      const key = `${wishId}|${likerId}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push({
+        wishId,
+        likerId,
+        likerName: row.likerName || '',
+        timestamp: row.timestamp || ''
+      });
+    };
+
+    serverRows.forEach(push);
+    localRows.forEach(push);
+    return merged;
+  }
+
   /**
-   * POST wish to Apps Script (text/plain avoids CORS preflight issues).
+   * Đọc tab Likes (gviz) + cache local — gọi khi mở trang.
    */
-  async postWishToSheet(payload) {
+  async loadLikes() {
+    let serverRows = [];
+
+    if (this.likesGvizUrl) {
+      try {
+        const res = await fetch(this.likesGvizUrl, { cache: 'no-cache' });
+        const text = await res.text();
+        const rows = parseGvizRows(text);
+
+        rows.forEach((r) => {
+          if (!r?.c) return;
+          const c = r.c;
+          const first = String(cellValue(c[0]) || cellValue(c[1]) || '')
+            .trim()
+            .toLowerCase();
+          if (HEADER_LABELS.has(first)) return;
+
+          serverRows.push({
+            timestamp: cellValue(c[0]),
+            wishId: cellValue(c[1]),
+            likerId: cellValue(c[2]),
+            likerName: cellValue(c[3])
+          });
+        });
+      } catch (err) {
+        console.warn('Error fetching likes from Google Sheet:', err);
+      }
+    }
+
+    const merged = this._mergeLikeRecords(serverRows, this._readLocalLikeCache());
+    this._applyLikeRecords(merged);
+    this._likesLoaded = true;
+    this._localLikesBootstrapped = true;
+  }
+
+  /** Gọi sớm để lấy IP không chặn lúc bấm tim. */
+  warmLikeNetwork() {
+    void resolvePublicIp();
+  }
+
+  async ensureLikesLoaded() {
+    if (!this._likesLoaded) {
+      await this.loadLikes();
+    }
+  }
+
+  /**
+   * POST JSON to Apps Script (text/plain avoids CORS preflight issues).
+   */
+  async postToAppsScript(payload) {
     const url = this.getAppsScriptUrl();
     if (!url) {
       return { ok: false, reason: 'missing_apps_script_url' };
@@ -94,7 +302,7 @@ export class GoogleSheetService {
         if (data.ok === false) {
           return { ok: false, reason: data.error || 'apps_script_error' };
         }
-        return { ok: true };
+        return { ok: true, data };
       }
     } catch (err) {
       console.warn('CORS POST failed, retrying no-cors:', err);
@@ -114,6 +322,85 @@ export class GoogleSheetService {
     }
   }
 
+  async postWishToSheet(payload) {
+    return this.postToAppsScript(payload);
+  }
+
+  /**
+   * Thả tim — cập nhật ngay trên máy; ghi Sheet chạy ngầm.
+   * @returns {{ accepted: boolean, alreadyLiked: boolean, count: number }}
+   */
+  likeWishNow(wishId) {
+    if (!wishId) {
+      return { accepted: false, alreadyLiked: false, count: 0 };
+    }
+
+    this._bootstrapLikesFromLocal();
+    const likerId = getVisitorId();
+
+    if (this.hasVisitorLiked(wishId) || this._hasLocalLike(wishId, likerId)) {
+      this.likedByVisitor.add(wishId);
+      return {
+        accepted: false,
+        alreadyLiked: true,
+        count: this.getHeartCount(wishId)
+      };
+    }
+
+    const likerName = getLikerDisplayName();
+    const timestamp = new Date().toLocaleString('vi-VN');
+    const device = getClientDeviceInfo();
+
+    const localRecord = { wishId, likerId, likerName, timestamp, device, ip: '' };
+    const localCache = this._readLocalLikeCache();
+    localCache.push(localRecord);
+    this._writeLocalLikeCache(localCache);
+
+    this.likedByVisitor.add(wishId);
+    const count = this.getHeartCount(wishId) + 1;
+    this.heartCounts.set(wishId, count);
+
+    void this._syncLikeInBackground(localRecord);
+
+    return { accepted: true, alreadyLiked: false, count };
+  }
+
+  async _syncLikeInBackground(record) {
+    const { wishId, likerId, likerName, timestamp, device } = record;
+    try {
+      const ip = await resolvePublicIp();
+      record.ip = ip;
+
+      const cache = this._readLocalLikeCache();
+      const idx = cache.findIndex(
+        (r) =>
+          String(r.wishId).trim() === String(wishId).trim() &&
+          String(r.likerId).trim() === likerId &&
+          r.timestamp === timestamp
+      );
+      if (idx !== -1) {
+        cache[idx] = { ...cache[idx], ip };
+        this._writeLocalLikeCache(cache);
+      }
+
+      const sheetResult = await this.postToAppsScript({
+        action: 'like',
+        wishId,
+        likerId,
+        likerName,
+        timestamp,
+        device,
+        ip
+      });
+
+      if (sheetResult.ok && sheetResult.data && typeof sheetResult.data.count === 'number') {
+        this.heartCounts.set(wishId, sheetResult.data.count);
+      }
+    } catch (err) {
+      console.warn('Background like sync failed:', err);
+    }
+  }
+
   /**
    * Fetch wishes from Google Sheet via gviz API + merge with local cache
    */
@@ -125,6 +412,11 @@ export class GoogleSheetService {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
+          parsed.forEach((w) => {
+            if (w && !w.id && w.wish) {
+              w.id = stableWishId(w.author, w.wish, w.timestamp);
+            }
+          });
           wishes.push(...parsed);
         }
       }
@@ -139,51 +431,50 @@ export class GoogleSheetService {
     try {
       const res = await fetch(this.gvizUrl, { cache: 'no-cache' });
       const text = await res.text();
+      const rows = parseGvizRows(text);
 
-      const jsonStart = text.indexOf('{');
-      const jsonEnd = text.lastIndexOf('}');
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        const jsonStr = text.substring(jsonStart, jsonEnd + 1);
-        const data = JSON.parse(jsonStr);
+      rows.forEach((r, idx) => {
+        if (!r?.c) return;
+        const c = r.c;
 
-        if (data && data.table && data.table.rows) {
-          const rows = data.table.rows;
-          rows.forEach((r, idx) => {
-            if (!r || !r.c) return;
-            const c = r.c;
+        let dateStr = cellValue(c[0]);
+        let author = cellValue(c[1]);
+        let wish = cellValue(c[2]);
+        let wishId = cellValue(c[3]);
 
-            let dateStr = c[0] ? (c[0].f || c[0].v || '') : '';
-            let author = c[1] ? (c[1].v || '') : '';
-            let wish = c[2] ? (c[2].v || '') : '';
-
-            const firstCell = String(dateStr || author || '').trim().toLowerCase();
-            if (HEADER_LABELS.has(firstCell)) {
-              return;
-            }
-
-            if (!wish && author) {
-              wish = author;
-              author = dateStr || 'Người ước nguyện';
-              dateStr = new Date().toLocaleDateString('vi-VN');
-            }
-
-            if (wish) {
-              const item = {
-                id: `sheet-${idx}`,
-                author: String(author || 'Người ước nguyện').trim(),
-                wish: String(wish).trim(),
-                timestamp: String(dateStr || new Date().toLocaleDateString('vi-VN')),
-                fromSheet: true
-              };
-
-              const exists = wishes.some(w => w.wish === item.wish && w.author === item.author);
-              if (!exists) {
-                wishes.push(item);
-              }
-            }
-          });
+        const firstCell = String(dateStr || author || '').trim().toLowerCase();
+        if (HEADER_LABELS.has(firstCell)) {
+          return;
         }
-      }
+
+        if (!wish && author) {
+          wish = author;
+          author = dateStr || 'Người ước nguyện';
+          dateStr = new Date().toLocaleDateString('vi-VN');
+        }
+
+        if (wish) {
+          const trimmedAuthor = String(author || 'Người ước nguyện').trim();
+          const trimmedWish = String(wish).trim();
+          const trimmedTime = String(dateStr || new Date().toLocaleDateString('vi-VN'));
+          const id = wishId.trim() || stableWishId(trimmedAuthor, trimmedWish, trimmedTime);
+
+          const item = {
+            id,
+            author: trimmedAuthor,
+            wish: trimmedWish,
+            timestamp: trimmedTime,
+            fromSheet: true
+          };
+
+          const exists = wishes.some(
+            (w) => w.id === item.id || (w.wish === item.wish && w.author === item.author)
+          );
+          if (!exists) {
+            wishes.push(item);
+          }
+        }
+      });
     } catch (err) {
       console.warn('Error fetching wishes from Google Sheet:', err);
     }
@@ -194,10 +485,13 @@ export class GoogleSheetService {
   /**
    * Save a newly released wish to Google Sheet and local cache
    */
-  async saveWish(author, wish) {
+  async saveWish(author, wish, wishId) {
     const timestamp = new Date().toLocaleString('vi-VN');
+    const id = wishId || this.createWishId();
+    rememberAuthorName(author);
+
     const newWish = {
-      id: `wish-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id,
       author: author.trim() || 'Người ước nguyện',
       wish: wish.trim(),
       timestamp
@@ -214,7 +508,8 @@ export class GoogleSheetService {
     const sheetResult = await this.postWishToSheet({
       timestamp,
       author: newWish.author,
-      wish: newWish.wish
+      wish: newWish.wish,
+      wishId: id
     });
 
     return {

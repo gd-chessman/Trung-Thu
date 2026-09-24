@@ -162,10 +162,12 @@ export class SceneManager {
    */
   async loadInitialWishes() {
     try {
+      await googleSheetService.loadLikes();
+      googleSheetService.warmLikeNetwork();
       const wishes = await googleSheetService.fetchWishes();
       if (wishes && wishes.length > 0) {
         wishes.forEach(w => {
-          this.skyLanterns.spawnExistingWish(w.author, w.wish, w.timestamp);
+          this.skyLanterns.spawnExistingWish(w.author, w.wish, w.timestamp, w.id);
         });
       }
     } catch (err) {
@@ -186,9 +188,10 @@ export class SceneManager {
     const spawnPos = cam.position.clone().add(forward.multiplyScalar(7));
     spawnPos.y = Math.max(spawnPos.y - 1.5, -2);
 
-    const lantern = this.skyLanterns.releaseWishLantern(author, wishText, spawnPos);
+    const wishId = googleSheetService.createWishId();
+    const lantern = this.skyLanterns.releaseWishLantern(author, wishText, spawnPos, '', wishId);
 
-    googleSheetService.saveWish(author, wishText).catch((e) => {
+    googleSheetService.saveWish(author, wishText, wishId).catch((e) => {
       console.warn('Could not save wish:', e);
     });
 
@@ -199,7 +202,7 @@ export class SceneManager {
    * Trigger celebratory fireworks
    */
   shootFirework() {
-    this.particleSky.triggerFirework();
+    return this.particleSky.triggerFirework();
   }
 
   /**

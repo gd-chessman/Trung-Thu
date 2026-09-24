@@ -105,9 +105,15 @@ export class UIManager {
     });
 
     const btnFirework = document.getElementById('btn-action-firework');
+    let lastFireworkToast = 0;
     btnFirework.addEventListener('click', () => {
-      this.sceneManager.shootFirework();
-      this.showToast('🎆 Pháo hoa rực rỡ chào mừng đêm rằm!');
+      const fired = this.sceneManager.shootFirework();
+      if (!fired) return;
+      const t = Date.now();
+      if (t - lastFireworkToast > 2200) {
+        lastFireworkToast = t;
+        this.showToast('🎆 Pháo hoa rực rỡ chào mừng đêm rằm!');
+      }
     });
 
     const btnPostcard = document.getElementById('btn-action-postcard');

@@ -127,24 +127,30 @@
       </div>
 
       <div class="form-group">
-        <label for="wish-text">Lời chúc / Điều ước của bạn:</label>
-        <textarea id="wish-text" class="form-textarea" rows="3" placeholder="Nhập lời ước nguyện của bạn..." maxlength="120">Gia đình bình an, vạn sự như ý, ấm áp sum vầy</textarea>
+        <div class="form-label-row">
+          <label for="wish-text">Lời chúc / Điều ước của bạn:</label>
+          <button type="button" id="btn-clear-wish-text" class="btn-clear-wish" disabled aria-label="Xóa lời chúc">
+            ✕ Xóa lời chúc
+          </button>
+        </div>
+        <textarea id="wish-text" class="form-textarea" rows="3" placeholder="Nhập lời ước nguyện của bạn..." maxlength="120"></textarea>
         
+        <p class="wish-presets-label">Gợi ý — bấm để điền sẵn lời chúc:</p>
         <div class="wish-presets">
-          <span class="preset-chip active" data-wish="Gia đình bình an, vạn sự như ý, ấm áp sum vầy">🏡 Bình an & Sum vầy</span>
-          <span class="preset-chip" data-wish="Công danh hanh thông, tài lộc dồi dào, vạn sự cát tường">💰 Tài lộc & Thịnh vượng</span>
-          <span class="preset-chip" data-wish="Học hành tấn tới, thi cử đỗ đạt, tương lai rực rỡ">🎓 Học vấn đỗ đạt</span>
-          <span class="preset-chip" data-wish="Tình duyên bền chặt, trăm năm hạnh phúc vẹn tròn">💖 Tình duyên viên mãn</span>
+          <button type="button" class="preset-chip" data-wish="Gia đình bình an, vạn sự như ý, ấm áp sum vầy">🏡 Bình an & Sum vầy</button>
+          <button type="button" class="preset-chip" data-wish="Công danh hanh thông, tài lộc dồi dào, vạn sự cát tường">💰 Tài lộc & Thịnh vượng</button>
+          <button type="button" class="preset-chip" data-wish="Học hành tấn tới, thi cử đỗ đạt, tương lai rực rỡ">🎓 Học vấn đỗ đạt</button>
+          <button type="button" class="preset-chip" data-wish="Tình duyên bền chặt, trăm năm hạnh phúc vẹn tròn">💖 Tình duyên viên mãn</button>
         </div>
       </div>
 
       <!-- Live 3D Lantern Paper Preview -->
       <div class="lantern-preview">
-        <div id="preview-wish-text" class="lantern-preview-text">"Gia đình bình an, vạn sự như ý, ấm áp sum vầy"</div>
-        <div id="preview-wish-author" class="lantern-preview-author">— Người gửi —</div>
+        <div id="preview-wish-text" class="lantern-preview-text is-placeholder">Lời chúc sẽ hiện trên đèn...</div>
+        <div id="preview-wish-author" class="lantern-preview-author is-placeholder">— Tên người gửi —</div>
       </div>
 
-      <button id="btn-submit-wish" class="btn-submit-wish">
+      <button id="btn-submit-wish" class="btn-submit-wish" type="button" disabled>
         <span>🔥</span> Thắp Lửa & Thả Đèn Lên Bầu Trời
       </button>
     </div>

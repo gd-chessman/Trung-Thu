@@ -152,6 +152,7 @@ export class SkyLanterns {
     // Store metadata on paperMesh for raycaster click detection
     paperMesh.userData = {
       isWish,
+      wishId: data.wishId || '',
       author: data.author || '',
       wishText: data.wishText || '',
       greeting: data.greeting || '',
@@ -290,12 +291,19 @@ export class SkyLanterns {
   /**
    * Release or spawn a personalized wish lantern into the sky
    */
-  releaseWishLantern(author, wishText, originPos = new THREE.Vector3(0, 0, 5), timestamp = '') {
+  releaseWishLantern(
+    author,
+    wishText,
+    originPos = new THREE.Vector3(0, 0, 5),
+    timestamp = '',
+    wishId = ''
+  ) {
     const wishData = {
       isWish: true,
       author,
       wishText,
-      timestamp: timestamp || new Date().toLocaleString('vi-VN')
+      timestamp: timestamp || new Date().toLocaleString('vi-VN'),
+      wishId
     };
 
     const lantern = this.createLanternEntity(wishData);
@@ -320,7 +328,7 @@ export class SkyLanterns {
   /**
    * Spawn a wish lantern that was already in the Google Sheet / storage
    */
-  spawnExistingWish(author, wishText, timestamp = '') {
+  spawnExistingWish(author, wishText, timestamp = '', wishId = '') {
     const posX = (Math.random() - 0.5) * 160;
     const posY = 5 + Math.random() * 65;
     const posZ = -15 - Math.random() * 110;
@@ -329,7 +337,8 @@ export class SkyLanterns {
       isWish: true,
       author,
       wishText,
-      timestamp: timestamp || new Date().toLocaleDateString('vi-VN')
+      timestamp: timestamp || new Date().toLocaleDateString('vi-VN'),
+      wishId
     });
 
     lantern.mesh.position.set(posX, posY, posZ);

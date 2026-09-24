@@ -245,6 +245,12 @@ export class AudioManager {
     this.initContext();
     if (!this.ctx || this.isMuted) return;
 
+    const now = performance.now();
+    if (now - (this._lastFireworkSfxAt || 0) < 320) {
+      return;
+    }
+    this._lastFireworkSfxAt = now;
+
     const t = this.ctx.currentTime;
 
     // Launch whistle

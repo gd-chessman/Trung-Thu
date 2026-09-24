@@ -7,6 +7,7 @@
 
 import confetti from 'canvas-confetti';
 import { audioManager } from '../audio/AudioManager.js';
+import { googleSheetService } from '../services/GoogleSheetService.js';
 
 export class LanternDetailModal {
   constructor(openWishModalFn) {
@@ -25,6 +26,7 @@ export class LanternDetailModal {
     this.heartCountEl = document.getElementById('lantern-heart-count');
 
     this.currentData = null;
+    this.currentWishId = null;
     this.heartCount = 0;
 
     this.initEvents();
@@ -38,16 +40,7 @@ export class LanternDetailModal {
 
     if (this.btnHeart) {
       this.btnHeart.addEventListener('click', () => {
-        this.heartCount++;
-        this.heartCountEl.textContent = this.heartCount;
-        audioManager.playChime(1046, 0.3);
-
-        confetti({
-          particleCount: 25,
-          spread: 50,
-          origin: { y: 0.5 },
-          colors: ['#ff3366', '#ffd700', '#ffffff']
-        });
+        this.submitHeart();
       });
     }
 
@@ -61,10 +54,28 @@ export class LanternDetailModal {
     }
   }
 
+  submitHeart() {
+    if (!this.currentWishId) return;
+
+    const result = googleSheetService.likeWishNow(this.currentWishId);
+    if (!result.accepted) return;
+
+    this.heartCount = result.count;
+    if (this.heartCountEl) this.heartCountEl.textContent = this.heartCount;
+
+    audioManager.playChime(1046, 0.3);
+    confetti({
+      particleCount: 25,
+      spread: 50,
+      origin: { y: 0.5 },
+      colors: ['#ff3366', '#ffd700', '#ffffff']
+    });
+  }
+
   show(lanternData) {
     this.currentData = lanternData;
-    this.heartCount = Math.floor(Math.random() * 8) + 1;
-    if (this.heartCountEl) this.heartCountEl.textContent = this.heartCount;
+    this.currentWishId = null;
+    this.heartCount = 0;
 
     audioManager.playChime(784, 0.35);
 
@@ -80,6 +91,12 @@ export class LanternDetailModal {
       this.timeEl.textContent = lanternData.timestamp || 'Rằm Tháng Tám';
 
       if (this.btnHeart) this.btnHeart.style.display = 'inline-flex';
+      this.currentWishId = googleSheetService.resolveWishIdFromLantern(lanternData);
+      googleSheetService.ensureLikesLoaded().then(() => {
+        if (this.currentData !== lanternData) return;
+        this.heartCount = googleSheetService.getHeartCount(this.currentWishId);
+        if (this.heartCountEl) this.heartCountEl.textContent = this.heartCount;
+      });
       this.btnAction.textContent = '🏮 Thả Thêm Đèn Của Bạn';
     } else {
       // 🌕 Normal Lantern with Mid-Autumn Blessing

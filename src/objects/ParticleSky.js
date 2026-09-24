@@ -15,7 +15,7 @@ export class ParticleSky {
 
     this.createStarfield(perf.starCount ?? 2200);
     this.createFireflies(perf.fireflyCount ?? 40);
-    this.initFireworks();
+    this.initFireworks(perf);
 
     this.scene.add(this.group);
   }
@@ -113,88 +113,181 @@ export class ParticleSky {
     }
   }
 
-  initFireworks() {
+  _getFireworkParticleMap() {
+    if (this._fireworkParticleMap) return this._fireworkParticleMap;
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    grad.addColorStop(0.35, 'rgba(255, 220, 120, 0.85)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 32, 32);
+    this._fireworkParticleMap = new THREE.CanvasTexture(canvas);
+    return this._fireworkParticleMap;
+  }
+
+  initFireworks(perf = {}) {
+    this.maxFireworkBursts = perf.maxFireworkBursts ?? 4;
+    this.particlesPerBurst = perf.fireworkParticleCount ?? 80;
+    this.fireworkUseLights = perf.fireworkLights !== false;
+    this.fireworkCooldownMs = perf.fireworkCooldownMs ?? 350;
+    this._lastFireworkAt = 0;
+
     this.fireworkBursts = [];
+    this.totalFireworkParticles = this.maxFireworkBursts * this.particlesPerBurst;
+
+    const positions = new Float32Array(this.totalFireworkParticles * 3);
+    const colors = new Float32Array(this.totalFireworkParticles * 3);
+    for (let i = 0; i < this.totalFireworkParticles; i++) {
+      positions[i * 3 + 1] = -9999;
+    }
+
+    const posAttr = new THREE.BufferAttribute(positions, 3);
+    posAttr.setUsage(THREE.DynamicDrawUsage);
+    const colAttr = new THREE.BufferAttribute(colors, 3);
+    colAttr.setUsage(THREE.DynamicDrawUsage);
+
+    this.fireworkGeo = new THREE.BufferGeometry();
+    this.fireworkGeo.setAttribute('position', posAttr);
+    this.fireworkGeo.setAttribute('color', colAttr);
+
+    this.fireworkMat = new THREE.PointsMaterial({
+      size: 1.65,
+      map: this._getFireworkParticleMap(),
+      vertexColors: true,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true
+    });
+
+    this.fireworkPoints = new THREE.Points(this.fireworkGeo, this.fireworkMat);
+    this.fireworkPoints.frustumCulled = false;
+    this.group.add(this.fireworkPoints);
+
+    this._slotVelocities = Array.from({ length: this.maxFireworkBursts }, () =>
+      Array.from({ length: this.particlesPerBurst }, () => new THREE.Vector3())
+    );
+
+    this._flashLights = [];
+    if (this.fireworkUseLights) {
+      const lightCount = Math.min(2, this.maxFireworkBursts);
+      for (let i = 0; i < lightCount; i++) {
+        const light = new THREE.PointLight(0xffd700, 0, 48);
+        this.group.add(light);
+        this._flashLights.push(light);
+      }
+    }
+  }
+
+  _findFreeFireworkSlot() {
+    const used = new Set(this.fireworkBursts.map((b) => b.slot));
+    for (let s = 0; s < this.maxFireworkBursts; s++) {
+      if (!used.has(s)) return s;
+    }
+    return 0;
+  }
+
+  _hideFireworkSlot(slot) {
+    const posArr = this.fireworkGeo.attributes.position.array;
+    const offset = slot * this.particlesPerBurst;
+    for (let i = 0; i < this.particlesPerBurst; i++) {
+      const idx = offset + i;
+      posArr[idx * 3 + 1] = -9999;
+    }
   }
 
   triggerFirework(pos = null) {
-    // Pick launch target if not provided
-    const target = pos || new THREE.Vector3(
-      (Math.random() - 0.5) * 60,
-      18 + Math.random() * 25,
-      -35 - Math.random() * 40
-    );
+    const now = performance.now();
+    const onCooldown = now - this._lastFireworkAt < this.fireworkCooldownMs;
+    if (!onCooldown) {
+      this._lastFireworkAt = now;
+    } else if (this.fireworkBursts.length >= this.maxFireworkBursts) {
+      return false;
+    }
 
-    // Audio SFX
-    audioManager.playFirework();
+    if (this.fireworkBursts.length >= this.maxFireworkBursts) {
+      const oldest = this.fireworkBursts.shift();
+      if (oldest?.light) oldest.light.intensity = 0;
+      this._hideFireworkSlot(oldest.slot);
+    }
 
-    // Palette of festive festival fireworks (Gold, Ruby Red, Emerald Green, Royal Violet)
+    const target =
+      pos ||
+      new THREE.Vector3(
+        (Math.random() - 0.5) * 60,
+        18 + Math.random() * 25,
+        -35 - Math.random() * 40
+      );
+
+    if (!onCooldown) {
+      audioManager.playFirework();
+    }
+
     const palettes = [
-      [0xffd700, 0xffa500, 0xff4500], // Golden orange
-      [0xff1493, 0xff007f, 0xffffff], // Magenta blossom
-      [0x00ff7f, 0x7fffd4, 0xffd700], // Jade & Gold
-      [0x9370db, 0xba55d3, 0xffe4e1]  // Violet Imperial
+      [0xffd700, 0xffa500, 0xff4500],
+      [0xff1493, 0xff007f, 0xffffff],
+      [0x00ff7f, 0x7fffd4, 0xffd700],
+      [0x9370db, 0xba55d3, 0xffe4e1]
     ];
     const chosenPalette = palettes[Math.floor(Math.random() * palettes.length)];
+    const slot = this._findFreeFireworkSlot();
+    const offset = slot * this.particlesPerBurst;
+    const posArr = this.fireworkGeo.attributes.position.array;
+    const colArr = this.fireworkGeo.attributes.color.array;
+    const baseColors = new Float32Array(this.particlesPerBurst * 3);
+    const vels = this._slotVelocities[slot];
 
-    const particleCount = 140;
-    const geo = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-    const velocities = [];
+    for (let i = 0; i < this.particlesPerBurst; i++) {
+      const idx = offset + i;
+      posArr[idx * 3] = target.x;
+      posArr[idx * 3 + 1] = target.y;
+      posArr[idx * 3 + 2] = target.z;
 
-    for (let i = 0; i < particleCount; i++) {
-      positions[i * 3] = target.x;
-      positions[i * 3 + 1] = target.y;
-      positions[i * 3 + 2] = target.z;
-
-      // Spherical explosion velocity
       const phi = Math.random() * Math.PI * 2;
       const theta = Math.acos(Math.random() * 2 - 1);
-      const speed = 7.0 + Math.random() * 12.0;
-
-      velocities.push(new THREE.Vector3(
+      const speed = 6.5 + Math.random() * 10.5;
+      const vel = vels[i];
+      vel.set(
         speed * Math.sin(theta) * Math.cos(phi),
         speed * Math.sin(theta) * Math.sin(phi),
         speed * Math.cos(theta)
-      ));
+      );
 
       const hex = chosenPalette[Math.floor(Math.random() * chosenPalette.length)];
       const col = new THREE.Color(hex);
-      colors[i * 3] = col.r;
-      colors[i * 3 + 1] = col.g;
-      colors[i * 3 + 2] = col.b;
+      baseColors[i * 3] = col.r;
+      baseColors[i * 3 + 1] = col.g;
+      baseColors[i * 3 + 2] = col.b;
+      colArr[idx * 3] = col.r;
+      colArr[idx * 3 + 1] = col.g;
+      colArr[idx * 3 + 2] = col.b;
     }
 
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    const mat = new THREE.PointsMaterial({
-      size: 1.6,
-      vertexColors: true,
-      transparent: true,
-      opacity: 1.0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-
-    const points = new THREE.Points(geo, mat);
-    this.group.add(points);
-
-    // Light flash from explosion
-    const flash = new THREE.PointLight(chosenPalette[0], 4.5, 55);
-    flash.position.copy(target);
-    this.group.add(flash);
+    let light = null;
+    if (this._flashLights.length) {
+      light = this._flashLights[this.fireworkBursts.length % this._flashLights.length];
+      light.color.setHex(chosenPalette[0]);
+      light.intensity = 3.2;
+      light.position.copy(target);
+    }
 
     this.fireworkBursts.push({
-      points,
-      geo,
-      mat,
-      velocities,
-      flash,
+      slot,
       age: 0,
-      maxAge: 2.2
+      maxAge: 1.85,
+      baseColors,
+      light
     });
+
+    this.fireworkGeo.attributes.position.needsUpdate = true;
+    this.fireworkGeo.attributes.color.needsUpdate = true;
+    this.fireworkGeo.computeBoundingSphere();
+    return true;
   }
 
   update(delta) {
@@ -215,39 +308,51 @@ export class ParticleSky {
       f.mesh.material.opacity = 0.4 + Math.sin(this.time * 5.0 + f.phase) * 0.45;
     });
 
-    // Animate Fireworks Bursts
-    for (let b = this.fireworkBursts.length - 1; b >= 0; b--) {
-      const burst = this.fireworkBursts[b];
-      burst.age += delta;
+    // Animate Fireworks (single pooled mesh — tránh tạo geometry khi bấm liên tục)
+    if (this.fireworkBursts.length > 0) {
+      const posArr = this.fireworkGeo.attributes.position.array;
+      const colArr = this.fireworkGeo.attributes.color.array;
+      let needsPos = false;
+      let needsCol = false;
 
-      const progress = burst.age / burst.maxAge;
-      burst.mat.opacity = Math.max(0, 1.0 - progress);
+      for (let b = this.fireworkBursts.length - 1; b >= 0; b--) {
+        const burst = this.fireworkBursts[b];
+        burst.age += delta;
 
-      if (burst.flash) {
-        burst.flash.intensity = Math.max(0, 4.5 * (1.0 - burst.age * 3.0));
+        const fade = Math.max(0, 1.0 - burst.age / burst.maxAge);
+        const offset = burst.slot * this.particlesPerBurst;
+        const vels = this._slotVelocities[burst.slot];
+
+        if (burst.light) {
+          burst.light.intensity = Math.max(0, 3.2 * fade * (burst.age < 0.45 ? 1 : 0.25));
+        }
+
+        for (let i = 0; i < this.particlesPerBurst; i++) {
+          const idx = offset + i;
+          const vel = vels[i];
+          vel.y -= 9.8 * 0.4 * delta;
+          vel.multiplyScalar(0.96);
+
+          posArr[idx * 3] += vel.x * delta;
+          posArr[idx * 3 + 1] += vel.y * delta;
+          posArr[idx * 3 + 2] += vel.z * delta;
+
+          colArr[idx * 3] = burst.baseColors[i * 3] * fade;
+          colArr[idx * 3 + 1] = burst.baseColors[i * 3 + 1] * fade;
+          colArr[idx * 3 + 2] = burst.baseColors[i * 3 + 2] * fade;
+        }
+        needsPos = true;
+        needsCol = true;
+
+        if (burst.age >= burst.maxAge) {
+          if (burst.light) burst.light.intensity = 0;
+          this._hideFireworkSlot(burst.slot);
+          this.fireworkBursts.splice(b, 1);
+        }
       }
 
-      const posArr = burst.geo.attributes.position.array;
-      for (let i = 0; i < burst.velocities.length; i++) {
-        const vel = burst.velocities[i];
-        // Apply gravity & air drag
-        vel.y -= 9.8 * 0.4 * delta;
-        vel.multiplyScalar(0.96);
-
-        posArr[i * 3] += vel.x * delta;
-        posArr[i * 3 + 1] += vel.y * delta;
-        posArr[i * 3 + 2] += vel.z * delta;
-      }
-      burst.geo.attributes.position.needsUpdate = true;
-
-      // Clean up finished burst
-      if (burst.age >= burst.maxAge) {
-        this.group.remove(burst.points);
-        burst.geo.dispose();
-        burst.mat.dispose();
-        if (burst.flash) this.group.remove(burst.flash);
-        this.fireworkBursts.splice(b, 1);
-      }
+      if (needsPos) this.fireworkGeo.attributes.position.needsUpdate = true;
+      if (needsCol) this.fireworkGeo.attributes.color.needsUpdate = true;
     }
   }
 }

@@ -89,6 +89,8 @@ Sau khi sửa `.env`, **restart** server dev (`npm run dev`).
    - Who has access: **Anyone**
 5. Copy URL Web App vào `VITE_APPS_SCRIPT_URL`.
 
+Sau khi cập nhật `Code.gs`, tạo **deployment mới** (Web app) để API tim hoạt động. Script tự tạo tab **Likes** (gồm **Thiết bị** — User-Agent/màn hình — và **IP** do trình duyệt gửi kèm khi tim). Tab điều ước thêm cột **ID** khi ghi đèn mới; đèn cũ vẫn khớp tim qua ID ổn định tính từ tên + lời ước + thời gian.
+
 Sheet cần quyền **xem công khai** (hoặc link chia sẻ) để frontend đọc qua gviz.
 
 ---

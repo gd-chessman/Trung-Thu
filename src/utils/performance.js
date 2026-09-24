@@ -12,7 +12,11 @@ const PROFILES = {
     fireflyCount: 18,
     lotusCount: 8,
     raycastHoverMs: 140,
-    wishSparkTrail: false
+    wishSparkTrail: false,
+    fireworkParticleCount: 48,
+    maxFireworkBursts: 2,
+    fireworkLights: false,
+    fireworkCooldownMs: 220
   },
   medium: {
     pixelRatioMax: 1.5,
@@ -23,7 +27,11 @@ const PROFILES = {
     fireflyCount: 30,
     lotusCount: 12,
     raycastHoverMs: 90,
-    wishSparkTrail: true
+    wishSparkTrail: true,
+    fireworkParticleCount: 72,
+    maxFireworkBursts: 3,
+    fireworkLights: true,
+    fireworkCooldownMs: 180
   },
   high: {
     pixelRatioMax: 2,
@@ -34,7 +42,11 @@ const PROFILES = {
     fireflyCount: 40,
     lotusCount: 14,
     raycastHoverMs: 60,
-    wishSparkTrail: true
+    wishSparkTrail: true,
+    fireworkParticleCount: 88,
+    maxFireworkBursts: 4,
+    fireworkLights: true,
+    fireworkCooldownMs: 140
   }
 };
 

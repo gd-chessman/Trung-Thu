@@ -21,6 +21,18 @@ export class Mooncake {
 
     this.group.position.copy(position);
     this.scene.add(this.group);
+
+    this.setupDisplayLighting();
+  }
+
+  setupDisplayLighting() {
+    const hemi = new THREE.HemisphereLight(0xffefd0, 0x3d2818, 1.05);
+    hemi.position.set(0, 8, 0);
+    this.group.add(hemi);
+
+    this.rimLight = new THREE.PointLight(0xfff0cc, 1.6, 22);
+    this.rimLight.position.set(6, 2.8, 8);
+    this.group.add(this.rimLight);
   }
 
   createMooncakeTexture() {
@@ -31,10 +43,11 @@ export class Mooncake {
 
     // Rich baked crust golden-brown radial gradient
     const grad = ctx.createRadialGradient(512, 512, 50, 512, 512, 512);
-    grad.addColorStop(0, '#e59a3c'); // Baked center
-    grad.addColorStop(0.65, '#c87624');
-    grad.addColorStop(0.85, '#9d4c10'); // Darker egg-wash edge
-    grad.addColorStop(1, '#692d06');
+    grad.addColorStop(0, '#f0ae52');
+    grad.addColorStop(0.55, '#dba04a');
+    grad.addColorStop(0.78, '#c88838');
+    grad.addColorStop(0.92, '#b87830');
+    grad.addColorStop(1, '#a86c28');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 1024, 1024);
 
@@ -69,8 +82,8 @@ export class Mooncake {
       ctx.fill();
 
       // Petal inner shadow
-      ctx.strokeStyle = '#6e2b05';
-      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#a85820';
+      ctx.lineWidth = 3;
       ctx.stroke();
 
       ctx.restore();
@@ -94,20 +107,31 @@ export class Mooncake {
     ctx.textBaseline = 'middle';
     ctx.fillText('福', 512, 518);
 
-    // Subtle baked surface crumb speckles
+    // Viền ngoài sáng hơn (tránh vòng tối quanh bánh)
+    const rimGlow = ctx.createRadialGradient(512, 512, 320, 512, 512, 500);
+    rimGlow.addColorStop(0, 'rgba(255, 220, 140, 0)');
+    rimGlow.addColorStop(0.72, 'rgba(255, 210, 120, 0.12)');
+    rimGlow.addColorStop(1, 'rgba(255, 198, 100, 0.35)');
+    ctx.fillStyle = rimGlow;
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    // Subtle baked surface crumb speckles (chỉ vùng giữa)
     ctx.shadowBlur = 0;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
-    for (let i = 0; i < 400; i++) {
-      const rx = Math.random() * 1024;
-      const ry = Math.random() * 1024;
-      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255, 230, 160, 0.25)' : 'rgba(80, 30, 5, 0.2)';
+    for (let i = 0; i < 320; i++) {
+      const rx = 512 + (Math.random() - 0.5) * 520;
+      const ry = 512 + (Math.random() - 0.5) * 520;
+      if ((rx - 512) ** 2 + (ry - 512) ** 2 > 380 ** 2) continue;
+      ctx.fillStyle = Math.random() > 0.55 ? 'rgba(255, 230, 160, 0.28)' : 'rgba(120, 60, 20, 0.12)';
       ctx.beginPath();
       ctx.arc(rx, ry, Math.random() * 4, 0, Math.PI * 2);
       ctx.fill();
     }
 
     this.topTexture = new THREE.CanvasTexture(canvas);
+    this.topTexture.colorSpace = THREE.SRGBColorSpace;
+    this.topTexture.anisotropy = 4;
   }
 
   createMooncakeMesh() {
@@ -142,32 +166,46 @@ export class Mooncake {
 
     const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
     geometry.center();
-    // Rotate to face upwards
     geometry.rotateX(-Math.PI / 2);
+    geometry.computeVertexNormals();
 
-    // Material with baked golden sheen & egg-wash gloss
+    // ExtrudeGeometry: [0] viền bên, [1] mặt trên, [2] mặt dưới — thứ tự cũ [top, side] làm mặt trên bị tối
     const sideMat = new THREE.MeshStandardMaterial({
-      color: 0xc87624,
-      roughness: 0.42,
-      metalness: 0.12
+      map: this.topTexture,
+      color: 0xffe0a8,
+      roughness: 0.34,
+      metalness: 0.05,
+      emissive: 0x6a3810,
+      emissiveIntensity: 0.32
     });
 
     const topMat = new THREE.MeshStandardMaterial({
       map: this.topTexture,
-      roughness: 0.35,
-      metalness: 0.15,
-      bumpMap: this.topTexture,
-      bumpScale: 0.08
+      roughness: 0.3,
+      metalness: 0.1,
+      emissive: 0x7a4010,
+      emissiveIntensity: 0.22
     });
 
-    this.cakeMesh = new THREE.Mesh(geometry, [topMat, sideMat]);
+    const bottomMat = sideMat.clone();
+
+    this.cakeMesh = new THREE.Mesh(geometry, [sideMat, topMat, bottomMat]);
+    this.cakeMesh.castShadow = false;
+    this.cakeMesh.receiveShadow = false;
     this.cakeMesh.position.y = 1.35;
     this.cakeGroup.add(this.cakeMesh);
 
-    // Soft warm golden point light highlighting the cake details
-    this.cakeLight = new THREE.PointLight(0xffb84d, 1.8, 12);
-    this.cakeLight.position.set(0, 3.8, 1.5);
+    this.cakeLight = new THREE.PointLight(0xffd898, 2.8, 20);
+    this.cakeLight.position.set(0.5, 4.5, 3);
     this.cakeGroup.add(this.cakeLight);
+
+    this.cakeFillLight = new THREE.PointLight(0xfff5e0, 1.45, 18);
+    this.cakeFillLight.position.set(-4, 3.5, -1.5);
+    this.cakeGroup.add(this.cakeFillLight);
+
+    this.cakeUnderLight = new THREE.PointLight(0xffc870, 0.95, 12);
+    this.cakeUnderLight.position.set(0, 0.6, 4.5);
+    this.cakeGroup.add(this.cakeUnderLight);
 
     this.group.add(this.cakeGroup);
   }
@@ -176,9 +214,11 @@ export class Mooncake {
     // Elegant Celadon Ceramic Plate (Đĩa ngọc men lam viền vàng)
     const plateGeo = new THREE.CylinderGeometry(5.8, 4.4, 0.45, 48);
     const plateMat = new THREE.MeshStandardMaterial({
-      color: 0x1d5c58, // Celadon Jade Teal
-      roughness: 0.18,
-      metalness: 0.25
+      color: 0x2a7872,
+      roughness: 0.16,
+      metalness: 0.22,
+      emissive: 0x0a2826,
+      emissiveIntensity: 0.35
     });
     const plate = new THREE.Mesh(plateGeo, plateMat);
     plate.position.y = 0.15;
@@ -205,9 +245,11 @@ export class Mooncake {
     const bodyGeo = new THREE.SphereGeometry(1.4, 24, 24);
     bodyGeo.scale(1, 0.8, 1);
     const potMat = new THREE.MeshStandardMaterial({
-      color: 0x223530,
-      roughness: 0.25,
-      metalness: 0.2
+      color: 0x3a4a44,
+      roughness: 0.22,
+      metalness: 0.18,
+      emissive: 0x152018,
+      emissiveIntensity: 0.28
     });
     const body = new THREE.Mesh(bodyGeo, potMat);
     body.position.y = 1.0;

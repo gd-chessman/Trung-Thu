@@ -17,56 +17,100 @@ export class WishModal {
     this.previewText = document.getElementById('preview-wish-text');
     this.previewAuthor = document.getElementById('preview-wish-author');
     this.submitBtn = document.getElementById('btn-submit-wish');
+    this.clearWishBtn = document.getElementById('btn-clear-wish-text');
     this.closeBtn = document.getElementById('btn-close-wish');
 
     this.initEvents();
+    this.updateFormState();
   }
 
   initEvents() {
-    // Preset chips selection
-    this.presetChips.forEach(chip => {
+    this.presetChips.forEach((chip) => {
       chip.addEventListener('click', () => {
-        this.presetChips.forEach(c => c.classList.remove('active'));
+        this.presetChips.forEach((c) => c.classList.remove('active'));
         chip.classList.add('active');
-        this.textInput.value = chip.dataset.wish;
-        this.updatePreview();
+        this.textInput.value = chip.dataset.wish || '';
+        this.textInput.focus();
+        this.updateFormState();
       });
     });
 
-    // Real-time preview typing
-    this.textInput.addEventListener('input', () => this.updatePreview());
-    this.authorInput.addEventListener('input', () => this.updatePreview());
+    this.textInput.addEventListener('input', () => {
+      this.syncPresetHighlight();
+      this.updateFormState();
+    });
+    this.authorInput.addEventListener('input', () => this.updateFormState());
 
     const onEnterSubmit = (e) => {
       if (e.key !== 'Enter' || e.shiftKey) return;
       if (!this.overlay.classList.contains('active')) return;
+      if (this.submitBtn.disabled) return;
       e.preventDefault();
       this.submitWish();
     };
     this.authorInput.addEventListener('keydown', onEnterSubmit);
     this.textInput.addEventListener('keydown', onEnterSubmit);
 
-    // Submit Wish & Release Lantern
     this.submitBtn.addEventListener('click', () => this.submitWish());
 
-    // Close Modal
+    if (this.clearWishBtn) {
+      this.clearWishBtn.addEventListener('click', () => this.clearWishText());
+    }
+
     this.closeBtn.addEventListener('click', () => this.close());
     this.overlay.addEventListener('click', (e) => {
       if (e.target === this.overlay) this.close();
     });
   }
 
-  updatePreview() {
-    const text = this.textInput.value.trim() || 'Vạn sự như ý, gia đạo bình an';
-    const author = this.authorInput.value.trim() || 'Người gửi';
+  syncPresetHighlight() {
+    const text = this.textInput.value.trim();
+    this.presetChips.forEach((chip) => {
+      const match = (chip.dataset.wish || '').trim() === text;
+      chip.classList.toggle('active', match && text.length > 0);
+    });
+  }
 
-    this.previewText.textContent = `"${text}"`;
-    this.previewAuthor.textContent = `— ${author} —`;
+  clearWishText() {
+    this.textInput.value = '';
+    this.presetChips.forEach((c) => c.classList.remove('active'));
+    this.textInput.focus();
+    this.updateFormState();
+  }
+
+  isFormValid() {
+    return Boolean(this.authorInput.value.trim() && this.textInput.value.trim());
+  }
+
+  updateFormState() {
+    const text = this.textInput.value.trim();
+    const author = this.authorInput.value.trim();
+
+    if (text) {
+      this.previewText.textContent = `"${text}"`;
+      this.previewText.classList.remove('is-placeholder');
+    } else {
+      this.previewText.textContent = 'Lời chúc sẽ hiện trên đèn...';
+      this.previewText.classList.add('is-placeholder');
+    }
+
+    if (author) {
+      this.previewAuthor.textContent = `— ${author} —`;
+      this.previewAuthor.classList.remove('is-placeholder');
+    } else {
+      this.previewAuthor.textContent = '— Tên người gửi —';
+      this.previewAuthor.classList.add('is-placeholder');
+    }
+
+    this.submitBtn.disabled = !this.isFormValid();
+    if (this.clearWishBtn) {
+      this.clearWishBtn.disabled = !text;
+    }
   }
 
   open() {
     this.overlay.classList.add('active');
-    this.updatePreview();
+    this.updateFormState();
   }
 
   close() {
@@ -74,8 +118,10 @@ export class WishModal {
   }
 
   submitWish() {
-    const text = this.textInput.value.trim() || 'Gia đình bình an, vạn sự như ý';
-    const author = this.authorInput.value.trim() || 'Bạn';
+    if (!this.isFormValid()) return;
+
+    const text = this.textInput.value.trim();
+    const author = this.authorInput.value.trim();
 
     this.close();
     this.sceneManager.releaseWish(author, text);

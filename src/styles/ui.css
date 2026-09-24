@@ -95,6 +95,66 @@
   box-shadow: 0 0 16px var(--red-glow);
 }
 
+/* Nút BXH — cạnh phải, giữa màn hình */
+.btn-leaderboard-side {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 52px;
+  padding: 14px 10px 14px 12px;
+  border-radius: 16px 0 0 16px;
+  border: 1px solid var(--glass-border);
+  border-right: none;
+  background: linear-gradient(160deg, rgba(201, 27, 27, 0.92) 0%, rgba(120, 40, 10, 0.88) 100%);
+  color: #fff8eb;
+  cursor: pointer;
+  box-shadow:
+    -4px 0 22px rgba(0, 0, 0, 0.35),
+    0 0 20px rgba(245, 197, 24, 0.25);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-leaderboard-side-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(255, 215, 100, 0.6));
+}
+
+.btn-leaderboard-side-label {
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.25;
+  text-align: center;
+  max-width: 4.5rem;
+  color: var(--gold-light);
+}
+
+.btn-leaderboard-side-label--short {
+  display: none;
+}
+
+.btn-leaderboard-side:hover {
+  transform: translateY(-50%) translateX(-3px);
+  border-color: var(--gold-warm);
+  box-shadow:
+    -6px 0 28px rgba(245, 197, 24, 0.35),
+    0 0 24px rgba(201, 27, 27, 0.4);
+}
+
+.btn-leaderboard-side:active {
+  transform: translateY(-50%) translateX(-1px);
+}
+
 /* Bottom Controls Dock */
 .bottom-dock {
   display: flex;
@@ -972,6 +1032,23 @@
   .btn-secondary .btn-icon {
     font-size: 1rem;
   }
+
+  .btn-leaderboard-side {
+    padding: 12px 8px 12px 10px;
+    min-width: 46px;
+    top: 50%;
+    right: max(0px, env(safe-area-inset-right, 0px));
+  }
+
+  .btn-leaderboard-side-label--full {
+    display: none;
+  }
+
+  .btn-leaderboard-side-label--short {
+    display: block;
+    font-size: 0.58rem;
+  }
+
   .modal-card {
     padding: 24px 20px;
   }
@@ -1053,6 +1130,102 @@
   background: linear-gradient(135deg, rgba(29, 120, 116, 0.9) 0%, rgba(229, 169, 60, 0.9) 100%);
   color: #fff;
   box-shadow: 0 0 15px rgba(29, 120, 116, 0.4);
+}
+
+.leaderboard-status {
+  margin: 0 0 12px;
+  font-size: 0.88rem;
+  color: var(--text-muted, rgba(255, 248, 235, 0.65));
+  text-align: center;
+}
+
+.leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.leaderboard-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+}
+
+.leaderboard-item--tier1 {
+  border-color: rgba(255, 180, 100, 0.45);
+  background: linear-gradient(
+    135deg,
+    rgba(201, 27, 27, 0.12) 0%,
+    rgba(245, 197, 24, 0.08) 100%
+  );
+  box-shadow: 0 0 20px rgba(245, 197, 24, 0.12);
+}
+
+.leaderboard-pos {
+  flex-shrink: 0;
+  width: 2rem;
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  line-height: 1.4;
+}
+
+.leaderboard-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.leaderboard-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.leaderboard-author {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.leaderboard-hearts {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #ff6b8a;
+}
+
+.leaderboard-tier {
+  font-size: 0.65rem !important;
+  padding: 3px 10px !important;
+  margin-left: auto;
+}
+
+.leaderboard-wish {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--gold-light);
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.leaderboard-time {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted, rgba(255, 248, 235, 0.5));
 }
 
 .lantern-detail-content {

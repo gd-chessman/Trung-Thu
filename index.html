@@ -53,6 +53,18 @@
     <!-- Floating Toast Notification -->
     <div id="toast-msg" class="toast-msg"></div>
 
+    <button
+      id="btn-action-leaderboard"
+      class="btn-leaderboard-side"
+      type="button"
+      title="Bảng xếp hạng đèn nguyện cầu"
+      aria-label="Bảng xếp hạng đèn nguyện cầu"
+    >
+      <span class="btn-leaderboard-side-icon" aria-hidden="true">🏆</span>
+      <span class="btn-leaderboard-side-label btn-leaderboard-side-label--full">Bảng Xếp Hạng</span>
+      <span class="btn-leaderboard-side-label btn-leaderboard-side-label--short">BXH</span>
+    </button>
+
     <!-- Bottom Controls Dock -->
     <footer class="bottom-dock">
       <!-- Camera View Switcher -->
@@ -254,6 +266,25 @@
         <button id="btn-lantern-detail-action" class="btn-submit-wish" style="margin-top: 0; flex: 1;">
           🏮 Thả Đèn Của Riêng Bạn
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 5: Bảng xếp hạng đèn nguyện cầu -->
+  <div id="leaderboard-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="leaderboard-modal-title">
+    <div class="modal-card modal-card--framed" style="max-width: 640px;">
+      <div class="modal-header">
+        <div>
+          <h2 id="leaderboard-modal-title"><span class="modal-title-emoji">🏆</span><span class="modal-title-text">Bảng Xếp Hạng <span class="letter-vi">Đ</span>èn Nguyện Cầu</span></h2>
+          <p>Xếp theo số tim — Hạng I là đèn được yêu thích nhất</p>
+        </div>
+        <button id="btn-close-leaderboard" class="btn-close" aria-label="Đóng">&times;</button>
+      </div>
+
+      <p id="leaderboard-status" class="leaderboard-status">Đang tải...</p>
+
+      <div class="modal-card-scroll">
+        <ol id="leaderboard-list" class="leaderboard-list" aria-label="Danh sách xếp hạng"></ol>
       </div>
     </div>
   </div>

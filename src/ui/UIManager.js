@@ -6,6 +6,7 @@
 import { WishModal } from './WishModal.js';
 import { PostcardModal } from './PostcardModal.js';
 import { TriviaModal } from './TriviaModal.js';
+import { LeaderboardModal } from './LeaderboardModal.js';
 import { LanternDetailModal } from './LanternDetailModal.js';
 import { audioManager } from '../audio/AudioManager.js';
 
@@ -21,6 +22,7 @@ export class UIManager {
     this.wishModal = new WishModal(sceneManager, this.showToast);
     this.postcardModal = new PostcardModal(sceneManager, this.showToast);
     this.triviaModal = new TriviaModal(sceneManager, this.showToast);
+    this.leaderboardModal = new LeaderboardModal(this.showToast);
     this.lanternDetailModal = new LanternDetailModal(() => this.wishModal.open());
 
     // Connect 3D lantern click listener
@@ -130,6 +132,12 @@ export class UIManager {
     btnTrivia.addEventListener('click', () => {
       audioManager.playChime(587, 0.3);
       this.triviaModal.open();
+    });
+
+    const btnLeaderboard = document.getElementById('btn-action-leaderboard');
+    btnLeaderboard.addEventListener('click', () => {
+      audioManager.playChime(698, 0.3);
+      this.leaderboardModal.open();
     });
 
     // 4. Fullscreen Button

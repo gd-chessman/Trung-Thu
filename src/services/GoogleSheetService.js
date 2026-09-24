@@ -469,6 +469,30 @@ export class GoogleSheetService {
     return wishes;
   }
 
+  /** Danh sách xếp hạng theo số tim (Sheet + phiên hiện tại). */
+  async getLeaderboard(limit = 80) {
+    await this.ensureLikesLoaded();
+    const wishes = await this.fetchWishes();
+    const ids = wishes.map((w) => w.id).filter(Boolean);
+    this.recomputeWishRanks(ids);
+
+    const entries = wishes.map((w) => ({
+      id: w.id,
+      author: w.author || 'Người ước nguyện',
+      wish: w.wish || '',
+      timestamp: w.timestamp || '',
+      hearts: this.getHeartCount(w.id),
+      tier: this.getWishRank(w.id)
+    }));
+
+    entries.sort((a, b) => {
+      if (b.hearts !== a.hearts) return b.hearts - a.hearts;
+      return String(a.author).localeCompare(String(b.author), 'vi');
+    });
+
+    return entries.slice(0, limit);
+  }
+
   /**
    * Ghi điều ước lên Sheet; giữ bản trong RAM đến khi đóng tab
    */

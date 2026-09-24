@@ -55,20 +55,24 @@ export class UIManager {
     };
 
     // Chỉ bật nhạc sau cử chỉ người dùng (autoplay policy)
-    const onFirstUserAction = () => {
+    const onFirstUserAction = (e) => {
+      if (e.target?.closest?.('#btn-audio-toggle')) return;
       audioManager.unlockFromUserGesture();
       if (this.musicWanted) {
         startDefaultMusic(500);
       }
       window.removeEventListener('pointerdown', onFirstUserAction, true);
+      window.removeEventListener('touchstart', onFirstUserAction, true);
       window.removeEventListener('keydown', onFirstUserAction);
     };
 
     window.addEventListener('pointerdown', onFirstUserAction, { passive: true, capture: true });
+    window.addEventListener('touchstart', onFirstUserAction, { passive: true, capture: true });
     window.addEventListener('keydown', onFirstUserAction, { passive: true });
 
     audioBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      audioManager.unlockFromUserGesture();
       if (this.musicWanted) {
         this.musicWanted = false;
         audioManager.stopMusic();

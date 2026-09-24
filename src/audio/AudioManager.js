@@ -13,6 +13,10 @@ export class AudioManager {
     this.isMuted = false;
     this.currentNoteIndex = 0;
     this.unlockedAt = 0;
+    this.masterGain = null;
+    this._mediaUnlockEl = null;
+    this._mediaUnlockDone = false;
+    this._iosPrimed = false;
 
     // Traditional Vietnamese Pentatonic Scale (Hò, Xự, Xang, Xê, Cống)
     // Famous Mid-Autumn Melody notes: "Chiếc Đèn Ông Sao" & "Rước Đèn Tháng Tám" motif
@@ -47,19 +51,72 @@ export class AudioManager {
     ];
   }
 
+  _isMobileLike() {
+    return window.matchMedia('(pointer: coarse)').matches;
+  }
+
+  _dest() {
+    this.initContext();
+    return this.masterGain || this.ctx?.destination;
+  }
+
+  _outputLevel() {
+    return this._isMobileLike() ? 1.85 : 1;
+  }
+
   initContext() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
       this.ctx = new AudioCtx();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.value = this._outputLevel();
+      this.masterGain.connect(this.ctx.destination);
+    } else if (this.masterGain) {
+      this.masterGain.gain.value = this._outputLevel();
     }
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      void this.ctx.resume();
+    }
+  }
+
+  /** iOS/Safari: phát HTML media trong cử chỉ chạm — không chặn nhạc Web Audio. */
+  _primeMediaOutput() {
+    if (this._mediaUnlockDone) return;
+    if (!this._mediaUnlockEl) {
+      const el = document.createElement('audio');
+      el.setAttribute('playsinline', '');
+      el.setAttribute('webkit-playsinline', '');
+      el.preload = 'auto';
+      el.src =
+        'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      el.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none';
+      document.body.appendChild(el);
+      this._mediaUnlockEl = el;
+    }
+    void this._mediaUnlockEl.play().then(() => {
+      this._mediaUnlockDone = true;
+    }).catch(() => {});
+
+    if (this.ctx?.state === 'running' && !this._iosPrimed) {
+      try {
+        const buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+        const src = this.ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(this._dest());
+        src.start(0);
+        src.stop(0);
+        this._iosPrimed = true;
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   /** Gọi một lần sau tương tác đầu — tránh chime UI trùng tiếng “chạm” khi mở nhạc */
   unlockFromUserGesture() {
     this.initContext();
+    this._primeMediaOutput();
     this.unlockedAt = Date.now();
   }
 
@@ -111,8 +168,10 @@ export class AudioManager {
 
   // Synthesize traditional Plucked Zither (Đàn Tranh) timbre
   playDanTranhNote(freq, duration = 0.5, volume = 0.22) {
+    this.initContext();
     if (!this.ctx || this.isMuted) return;
 
+    const level = this._isMobileLike() ? volume * 1.25 : volume;
     const t = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const osc2 = this.ctx.createOscillator();
@@ -133,14 +192,14 @@ export class AudioManager {
 
     // Pluck envelope: sharp attack, gentle harmonic decay
     gainNode.gain.setValueAtTime(0, t);
-    gainNode.gain.linearRampToValueAtTime(volume, t + 0.015);
-    gainNode.gain.exponentialRampToValueAtTime(volume * 0.4, t + 0.12);
+    gainNode.gain.linearRampToValueAtTime(level, t + 0.015);
+    gainNode.gain.exponentialRampToValueAtTime(level * 0.4, t + 0.12);
     gainNode.gain.exponentialRampToValueAtTime(0.0001, t + duration * 1.8);
 
     osc.connect(filter);
     osc2.connect(filter);
     filter.connect(gainNode);
-    gainNode.connect(this.ctx.destination);
+    gainNode.connect(this._dest());
 
     osc.start(t);
     osc2.start(t);
@@ -164,7 +223,7 @@ export class AudioManager {
     gain.gain.linearRampToValueAtTime(0.08, t + 0.05);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._dest());
     osc.start(t);
     osc.stop(t + duration);
   }
@@ -206,7 +265,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._dest());
 
     osc.start(t);
     osc.stop(t + 1.5);
@@ -234,7 +293,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._dest());
 
     osc.start(t);
     osc.stop(t + dur);
@@ -264,7 +323,7 @@ export class AudioManager {
     whistleGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
     whistle.connect(whistleGain);
-    whistleGain.connect(this.ctx.destination);
+    whistleGain.connect(this._dest());
     whistle.start(t);
     whistle.stop(t + 0.45);
 
@@ -293,7 +352,7 @@ export class AudioManager {
 
       noise.connect(filter);
       filter.connect(boomGain);
-      boomGain.connect(this.ctx.destination);
+      boomGain.connect(this._dest());
 
       noise.start(bt);
       noise.stop(bt + 0.6);

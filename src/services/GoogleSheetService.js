@@ -70,12 +70,13 @@ function resolveSheetId() {
   return '';
 }
 
+/** Google gviz: `headers=1` — tránh đoán nhầm nhiều hàng đầu là tiêu đề (Sheet chỉ còn 1 dòng đọc được). */
 function buildGvizUrl(sheetId, sheetName) {
-  const base = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json`;
+  let url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&headers=1`;
   if (sheetName) {
-    return `${base}&sheet=${encodeURIComponent(sheetName)}`;
+    url += `&sheet=${encodeURIComponent(sheetName)}`;
   }
-  return base;
+  return url;
 }
 
 function resolveAppsScriptUrl() {
